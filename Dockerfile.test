@@ -1,0 +1,21 @@
+FROM python:3.9
+
+# Add image info
+LABEL org.opencontainers.image.source https://github.com/ranking-agent/trapi-throttle
+
+# set up requirements
+WORKDIR /app
+
+# Normal requirements
+ADD requirements.txt .
+RUN pip install -r requirements.txt
+
+# Testing requirements
+ADD requirements-test.txt .
+RUN pip install -r requirements-test.txt
+
+# Copy in files
+ADD . .
+
+# Set default command
+ENTRYPOINT "pytest"
