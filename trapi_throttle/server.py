@@ -1,8 +1,13 @@
 """Server routes"""
+import datetime
 import logging
 import pprint
 
-from fastapi import FastAPI
+from pydantic.main import BaseModel
+from pydantic import HttpUrl
+from trapi_throttle.storage import RedisHash, RedisList
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from reasoner_pydantic import Query
 
@@ -26,15 +31,50 @@ APP.add_middleware(
 
 @APP.on_event("startup")
 async def print_config():
+    # Print config
     pretty_config = pprint.pformat(
         settings.dict()
     )
     LOGGER.info(f" App Configuration:\n {pretty_config}")
 
+    # Initialize Redis
+    if settings.redis_url == "redis://fakeredis:6379/0":
+        import fakeredis.aioredis
+        APP.state.redis = await fakeredis.aioredis.create_redis_pool(
+            encoding="utf-8",
+        )
+    else:
+        import aioredis
+        APP.state.redis = await aioredis.create_redis_pool(
+            settings.redis_url,
+            encoding="utf-8",
+        )
+
+class KPInformation(BaseModel):
+    url: HttpUrl
+    request_qty: int
+    request_duration: datetime.timedelta
+
+@APP.post("/register/{kp_id}")
+async def register_kp(
+        kp_id: str,
+        kp_info: KPInformation,
+        request: Request,
+):
+    kp_info_db = RedisHash(request.app.state.redis, f"{kp_id}:info")
+    kp_info_db.set(kp_info.dict())
+
+    # Set up a subscriber
+
 @APP.post('/query/{kp_id}')
-async def async_query(
+async def query(
         kp_id: str,
         query: Query,
+        request: Request
 ) -> Query:
-    """Queue up a query for batching and return when completed"""
+    """ Queue up a query for batching and return when completed """
+
+    buffer = RedisList(request.app.state.redis, f"{kp_id}:buffer")
+    buffer.append(query)
+
     return query
