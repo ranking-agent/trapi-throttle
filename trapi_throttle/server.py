@@ -50,6 +50,11 @@ async def print_config():
             encoding="utf-8",
         )
 
+@APP.on_event('shutdown')
+async def shutdown_event():
+    APP.state.redis.close()
+    await APP.state.redis.wait_closed()
+
 class KPInformation(BaseModel):
     url: HttpUrl
     request_qty: int
@@ -62,7 +67,7 @@ async def register_kp(
         request: Request,
 ):
     kp_info_db = RedisHash(request.app.state.redis, f"{kp_id}:info")
-    kp_info_db.set(kp_info.dict())
+    await kp_info_db.set(kp_info.dict())
 
     # Set up a subscriber
 
@@ -75,6 +80,6 @@ async def query(
     """ Queue up a query for batching and return when completed """
 
     buffer = RedisList(request.app.state.redis, f"{kp_id}:buffer")
-    buffer.append(query)
+    await buffer.append(query.dict())
 
     return query
