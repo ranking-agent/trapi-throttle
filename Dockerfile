@@ -7,8 +7,8 @@ LABEL org.opencontainers.image.source https://github.com/ranking-agent/trapi-thr
 WORKDIR /app
 
 # Normal requirements
-ADD requirements.txt .
-RUN pip install -r requirements.txt
+ADD requirements-lock.txt .
+RUN pip install -r requirements-lock.txt
 
 # Copy in files
 ADD . .
