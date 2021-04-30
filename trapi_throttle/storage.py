@@ -19,6 +19,16 @@ class RedisValue(ABC):
         self.r = r
         self.key = key
 
+    async def set(self, v: any):
+        await self.r.set(self.key, json.dumps(v))
+
+    async def get(self):
+        v = await self.r.get(self.key)
+        return json.loads(v)
+
+    async def delete(self):
+        await self.r.delete(self.key)
+
     async def expire(self, when: int):
         await self.r.expire(self.key, when)
 
