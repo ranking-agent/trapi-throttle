@@ -6,6 +6,11 @@ LABEL org.opencontainers.image.source https://github.com/ranking-agent/trapi-thr
 # set up requirements
 WORKDIR /app
 
+# Install redis
+RUN apt update &&\
+    apt -y install --no-install-recommends redis-server &&\
+    apt clean && rm -rf /var/lib/apt/lists/*
+
 # Normal requirements
 ADD requirements-lock.txt .
 RUN pip install -r requirements-lock.txt
