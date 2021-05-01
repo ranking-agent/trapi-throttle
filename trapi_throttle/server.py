@@ -39,7 +39,7 @@ APP.add_middleware(
 )
 
 @APP.on_event("startup")
-async def print_config():
+async def startup_event():
     # Print config
     pretty_config = pprint.pformat(
         settings.dict()
@@ -71,19 +71,27 @@ async def process_batch(kp_id):
     kp_info = KPInformation.parse_raw(await kp_info_db.get())
 
     # Initialize the TAT
+    #
+    # TAT = Theoretical Arrival Time
+    # When the next request should be sent
+    # to adhere to the rate limit.
+    #
+    # This is an implementation of the GCRA algorithm
+    # More information can be found here:
+    # https://dev.to/astagi/rate-limiting-using-python-and-redis-58gk
     await tat_db.set(
         datetime.datetime.utcnow().isoformat()
     )
 
-    start_time = datetime.datetime.utcnow()
-
     # Use a new connection because subscribe method alters the connection
-    conn = await aioredis.create_redis(settings.redis_url)
+    conn = await aioredis.create_redis(settings.redis_url, encoding = "utf-8")
 
-    pattern = f"__keyspace@0__:{kp_id}:buffer:*"
-    channel, = await conn.psubscribe(pattern)
+    # Subscribe to changes to the buffer
+    kp_buffer_pattern = f"__keyspace@0__:{kp_id}:buffer:*"
+    channel, = await conn.psubscribe(kp_buffer_pattern)
 
     # TODO figure out why we need to sleep here
+    # for our tests to pass
     await asyncio.sleep(1)
 
     # Wait for anything to be added to the buffer
@@ -95,18 +103,17 @@ async def process_batch(kp_id):
         if len(batch_keys) == 0:
             continue
 
-        print(f"Received batch of size {len(batch_keys)}")
+        LOGGER.debug(
+            f"Processing batch of size {len(batch_keys)} for KP {kp_id}"
+        )
 
-        # tat = Theoretical Arrival Time
-        # When the next request should be sent
-        # to adhere to the rate limit
         now = datetime.datetime.utcnow()
         tat = datetime.datetime.fromisoformat(await tat_db.get())
 
         time_remaining_seconds = (tat - now).total_seconds()
         # Wait for TAT
         if time_remaining_seconds > 0:
-            print(f"Waiting {time_remaining_seconds}")
+            LOGGER.debug(f"Waiting {time_remaining_seconds}")
             await asyncio.sleep(time_remaining_seconds)
 
         # Process batch
@@ -126,25 +133,21 @@ async def process_batch(kp_id):
         async with httpx.AsyncClient() as client:
             response = await client.post(kp_info.url, json = merged_request_value)
 
-        if response.status_code == 429:
-            print("Too many requests!")
-        print(f"Successful response: {response.json()}")
-
         # TODO Implement split utility
-        response_values_db = [
-            RedisValue(APP.state.redis, f"{kp_id}:finished:{response_id}")
-            for response_id in batch_request_ids
-        ]
-        # Set response values
-        await asyncio.gather(*[
-            response_value_db.set(response.json())
-            for response_value_db in response_values_db
-        ])
+        for response_id in batch_request_ids:
+            await APP.state.redis.set(
+                f"{kp_id}:finished:{response_id}",
+                response.content,
+            )
 
         # Update TAT
         interval = kp_info.request_duration / kp_info.request_qty
         new_tat = datetime.datetime.utcnow() + interval
         await tat_db.set(new_tat.isoformat())
+
+    # Close redis connection
+    conn.close()
+    await conn.wait_closed()
 
 @APP.post("/register/{kp_id}")
 async def register_kp(
@@ -176,7 +179,7 @@ async def query(
 
     # Wait for query to be processed
     # Use a new connection because subscribe method alters the connection
-    conn = await aioredis.create_redis(settings.redis_url)
+    conn = await aioredis.create_redis(settings.redis_url, encoding = "utf-8")
     finished_notification_channel, = await conn.subscribe(
         f"__keyspace@0__:{kp_id}:finished:{request_id}")
 
