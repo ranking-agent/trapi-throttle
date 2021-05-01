@@ -11,7 +11,7 @@ from .utils import with_response_overlay
 @with_response_overlay(
     "http://kp/query",
     response = Response(status_code=200, content="OK"),
-    request_qty = 3,
+    request_qty = 2,
     request_duration = datetime.timedelta(seconds = 1)
 )
 async def test_rate_limiting():
