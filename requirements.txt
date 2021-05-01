@@ -1,6 +1,6 @@
 fastapi==0.63.0
 httpx==0.16.1
 reasoner-pydantic@git+git://github.com/ranking-agent/reasoner-pydantic@trapi-v1.1
-redis==3.5.3
 uvicorn==0.11.7
 python-dotenv==0.17.0
+aioredis==1.3.1
