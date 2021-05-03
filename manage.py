@@ -28,12 +28,12 @@ def dev(extra_args):
 
 def test(extra_args):
     """
-    This command runs the tests within docker
+    This command runs the tests within docker-compose
     and then exits.
     """
-    command = """\
-    docker build -t trapi-throttle-testing -f Dockerfile.test .
-    docker run -it trapi-throttle-testing {extra_args}\
+    command = f"""\
+    docker-compose -f docker-compose.test.yml up\
+    --build --abort-on-container-exit {extra_args}
     """
     run_command(command)
 
