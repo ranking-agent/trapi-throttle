@@ -1,0 +1,12 @@
+version: '3'
+
+services:
+  trapi-throttle:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    ports:
+      - '7830:7830'
+  redis:
+    build:
+      context: redis/

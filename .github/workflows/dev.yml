@@ -44,7 +44,7 @@ jobs:
       - name: Run tests and get output
         run: |
           echo 'TEST_OUTPUT<<EOF' >> $GITHUB_ENV
-          echo "$(docker run trapi-throttle-testing)" >> $GITHUB_ENV
+          echo "$(docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit)" >> $GITHUB_ENV
           echo 'EOF' >> $GITHUB_ENV
 
       - name: Exit if there are any test failures

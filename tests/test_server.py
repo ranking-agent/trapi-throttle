@@ -8,9 +8,6 @@ import pytest
 import httpx
 from asgi_lifespan import LifespanManager
 
-from trapi_throttle.config import settings
-settings.redis_url = "redis://localhost:6379/0"
-
 from trapi_throttle.server import APP
 from .utils import with_response_overlay
 
@@ -20,30 +17,6 @@ async def client():
                LifespanManager(APP):
         yield client
 
-@pytest.fixture
-async def local_redis():
-    # Create a temp file with our config
-    config_file = tempfile.NamedTemporaryFile()
-
-    config_file.write(b"notify-keyspace-events KEA\n")
-    config_file.flush()
-
-    # Start up redis in subprocess
-    redis_process = await asyncio.create_subprocess_shell(
-        f"redis-server {config_file.name}",
-        stdout = asyncio.subprocess.PIPE,
-    )
-
-    # Read output until we see ready message
-    while True:
-        line = await redis_process.stdout.readline()
-        print(line)
-        if "Ready to accept connections" in line.decode("utf-8"):
-            break
-
-    yield
-    redis_process.terminate()
-    config_file.close()
 
 TEST_QUERY = {
         "message" : {
@@ -65,7 +38,7 @@ TEST_RESPONSE = {
     request_qty = 3,
     request_duration = datetime.timedelta(seconds = 1)
 )
-async def test_simple_rate_limit(local_redis, client):
+async def test_simple_rate_limit(client):
 
     # Register kp
     kp_info = {
