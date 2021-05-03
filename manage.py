@@ -83,7 +83,7 @@ def lock(extra_args):
     for src, locked in requirements_files.items():
         command = f"""\
         docker run -v $(pwd):/app python:3.9 \
-            /bin/bash -c "pip install -qqq -r /app/{src} && pip freeze" >> {locked}
+            /bin/bash -c "pip install -qqq -r /app/{src} && pip freeze" > {locked}
         """
         run_command(command)
 
