@@ -76,25 +76,3 @@ class RedisList(RedisValue):
 
     async def append(self, v):
         await self.r.lpush(self.key, json.dumps(v))
-
-
-class RedisGraph():
-    """Redis graph."""
-
-    async def __init__(self, key: str):
-        self.nodes = RedisHash(key + ':nodes')
-        self.edges = RedisHash(key + ':edges')
-
-    async def expire(self, when: int):
-        self.nodes.expire(when)
-        self.edges.expire(when)
-
-    async def get(self):
-        return dict(
-            nodes=self.nodes.get(),
-            edges=self.edges.get()
-        )
-
-    async def set(self, v):
-        self.nodes.set(v['nodes'])
-        self.edges.set(v['edges'])
