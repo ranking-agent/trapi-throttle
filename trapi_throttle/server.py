@@ -153,9 +153,8 @@ async def process_batch(kp_id):
 async def register_kp(
         kp_id: str,
         kp_info: KPInformation,
-        request: Request,
 ):
-    kp_info_db = RedisValue(request.app.state.redis, f"{kp_id}:info")
+    kp_info_db = RedisValue(APP.state.redis, f"{kp_id}:info")
     await kp_info_db.set(kp_info.json())
 
     loop = asyncio.get_event_loop()
