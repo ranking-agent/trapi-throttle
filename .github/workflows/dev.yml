@@ -37,9 +37,6 @@ jobs:
         # Ignore the failure of a step and avoid terminating the job.
         continue-on-error: true
 
-      - name: Build
-        run: docker build -t trapi-throttle-testing -f Dockerfile.test .
-
       - name: Run tests and get output
         run: |
           echo 'TEST_OUTPUT<<EOF' >> $GITHUB_ENV
