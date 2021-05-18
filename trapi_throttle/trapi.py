@@ -41,6 +41,47 @@ def merge_qgraphs_by_id(qgraphs: list[QueryGraph]) -> QueryGraph:
 
     return merged_qgraph
 
-def split_messages_by_id(message: Message) -> list[Message]:
-    """ Split a message """
-    pass
+
+def remove_unbound_from_kg(message):
+    """
+    Remove all knowledge graph nodes and edges without a binding
+    """
+
+    bound_knodes = set()
+    for result in message["results"]:
+        for node_binding_list in result["node_bindings"].values():
+            for nb in node_binding_list:
+                bound_knodes.add(nb["id"])
+    bound_kedges = set()
+    for result in message["results"]:
+        for edge_binding_list in result["edge_bindings"].values():
+            for nb in edge_binding_list:
+                bound_kedges.add(nb["id"])
+
+    message["knowledge_graph"]["nodes"] = {
+        nid:node for nid,node in message["knowledge_graph"]["nodes"].items()
+        if nid in bound_knodes
+    }
+    message["knowledge_graph"]["edges"] = {
+        eid:edge for eid,edge in message["knowledge_graph"]["edges"].items()
+        if eid in bound_kedges
+    }
+
+def filter_by_kgraph_id(message, kgraph_node_id):
+    """
+    Filter a message to ensure that all results
+    and edges are associated with the given kgraph node ID
+    """
+
+    # Only keep results where there is a node binding
+    # that connects to our given kgraph_node_id
+    message["results"] = [
+        result for result in message["results"]
+        if any(
+            nb["id"] == kgraph_node_id
+            for qg_id, nb_list in result["node_bindings"].items()
+            for nb in nb_list
+        )
+    ]
+
+    remove_unbound_from_kg(message)
