@@ -9,10 +9,10 @@ httpcore==0.12.3
 httptools==0.1.2
 httpx==0.16.1
 idna==3.1
-pydantic==1.8.1
+pydantic==1.8.2
 python-dotenv==0.17.0
-reasoner-pydantic @ git+git://github.com/ranking-agent/reasoner-pydantic@79be5c1e32aacc1d502f7071d518a4994afba04e
-rfc3986==1.4.0
+reasoner-pydantic @ git+git://github.com/ranking-agent/reasoner-pydantic@dee9f5f8fc77508f9c3a828dfdd6765e06a36078
+rfc3986==1.5.0
 sniffio==1.2.0
 starlette==0.13.6
 typing-extensions==3.10.0.0

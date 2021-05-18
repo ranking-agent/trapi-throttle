@@ -9,6 +9,8 @@ from fastapi import FastAPI, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from asgiar import ASGIAR
 
+from simple_kp.testing import kp_app
+
 def url_to_host(url):
     # TODO modify ASGIAR to accept a URL instead of a host
     return urlparse(url).netloc
@@ -82,6 +84,31 @@ async def response_overlay(
         )
         yield
 
+@asynccontextmanager
+async def kp_overlay(
+        url,
+        kp_data: str,
+        request_qty: int,
+        request_duration: datetime.timedelta
+):
+    """
+    Create a KP overlay with rate limting applied
+    Returns 429 if the provided rate limit is exceeded
+    """
+    async with AsyncExitStack() as stack:
+        async with kp_app(data = kp_data) as app:
+            app.add_middleware(
+                RateLimitMiddleware,
+                request_qty = request_qty,
+                request_duration = request_duration,
+            )
+
+            await stack.enter_async_context(
+                ASGIAR(app, host=url_to_host(url))
+            )
+            yield
+
+
 def with_context(context, *args_, **kwargs_):
     """Turn context manager into decorator."""
     def decorator(func):
@@ -93,6 +120,7 @@ def with_context(context, *args_, **kwargs_):
     return decorator
 
 with_response_overlay = partial(with_context, response_overlay)
+with_kp_overlay = partial(with_context, kp_overlay)
 
 
 def validate_message(template, value):
