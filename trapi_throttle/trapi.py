@@ -1,46 +1,22 @@
+import copy
+from collections import defaultdict
+
 from trapi_throttle.utils import all_equal
 from reasoner_pydantic import Message, QueryGraph
 
 class UnableToMerge(BaseException):
     """ Unable to merge given query graphs """
 
-def merge_qgraphs_by_id(qgraphs: list[QueryGraph]) -> QueryGraph:
+def extract_curies(qgraph: QueryGraph) -> dict[str, list[str]]:
     """
-    Merge query graphs using only the ids property on nodes
-
-    If any other properties differ this will raise UnableToMerge
+    Pull curies from query graph and
+    return them as a mapping of node_id -> curie_list
     """
-
-    # Initialize map of IDs contained in each node by key
-    node_id_mapping = {
-        node_id:[] for node_id, node in qgraphs[0]["nodes"].items()
-        if "ids" in node
+    return {
+        node_id : curies
+        for node_id, node in qgraph["nodes"].items()
+        if (curies := node.pop("id")) is not None
     }
-
-    # Fill in map and remove IDs from nodes
-    for node_id, id_list in node_id_mapping.items():
-        for qgraph in qgraphs:
-            try:
-                id_list.extend(
-                    qgraph["nodes"][node_id].pop("ids")
-                )
-            except KeyError:
-                # ids property not present
-                raise UnableToMerge(
-                    "ID properties not present on all messages"
-                )
-
-    # With ids removed all of the dictionaries should be equal
-    if not all_equal(qgraphs):
-        raise UnableToMerge("Query graphs are not equal")
-
-    # Re-add IDs to the merged query graph
-    merged_qgraph = qgraphs[0]
-    for node_id, id_list in node_id_mapping.items():
-        merged_qgraph["nodes"][node_id]["ids"] = id_list
-
-    return merged_qgraph
-
 
 def remove_unbound_from_kg(message):
     """
@@ -67,21 +43,40 @@ def remove_unbound_from_kg(message):
         if eid in bound_kedges
     }
 
-def filter_by_kgraph_id(message, kgraph_node_id):
+def result_contains_node_bindings(
+        result,
+        bindings: dict[str, list[str]]
+):
+    """ Check that the result object has all bindings provided (qg_id->kg_id) """
+    for qg_id, kg_ids in bindings.items():
+        for kg_id in kg_ids:
+            if not any(
+                nb["id"] == kg_id
+                for nb in result["node_bindings"][qg_id]
+            ):
+                return False
+    return True
+
+
+def filter_by_curie_mapping(
+        message: Message,
+        curie_mapping: dict[str, list[str]]
+):
     """
     Filter a message to ensure that all results
-    and edges are associated with the given kgraph node ID
+    contain the bindings specified in the curie_mapping
     """
+
+    # Update query graph IDs
+    for qg_id, curie_list in curie_mapping.items():
+        message["query_graph"]["nodes"][qg_id]["ids"] = curie_list
 
     # Only keep results where there is a node binding
     # that connects to our given kgraph_node_id
     message["results"] = [
         result for result in message["results"]
-        if any(
-            nb["id"] == kgraph_node_id
-            for qg_id, nb_list in result["node_bindings"].items()
-            for nb in nb_list
-        )
+        if result_contains_node_bindings(result, curie_mapping)
     ]
 
+    # Remove extra knowledge graph nodes
     remove_unbound_from_kg(message)

@@ -10,7 +10,7 @@ import httpx
 from asgi_lifespan import LifespanManager
 
 from trapi_throttle.server import APP
-from .utils import with_kp_overlay
+from .utils import validate_message, with_kp_overlay
 
 @pytest.fixture
 async def client():
@@ -24,14 +24,19 @@ async def client():
     "http://kp1/query",
     kp_data = \
         """
-        CHEBI:6801(( category biolink:ChemicalSubstance ))
         MONDO:0005148(( category biolink:Disease ))
+        CHEBI:6801(( category biolink:ChemicalSubstance ))
         CHEBI:6801-- predicate biolink:treats -->MONDO:0005148
+        CHEBI:6802(( category biolink:ChemicalSubstance ))
+        CHEBI:6802-- predicate biolink:treats -->MONDO:0005148
+        CHEBI:6803(( category biolink:ChemicalSubstance ))
+        CHEBI:6803-- predicate biolink:treats -->MONDO:0005148
         """,
     request_qty = 3,
     request_duration = datetime.timedelta(seconds = 1)
 )
 async def test_batch(client):
+    """ Test that we correctly batch 3 queries into 1 """
 
     # Register kp
     kp_info = {
@@ -80,7 +85,122 @@ async def test_batch(client):
 
     # Verify that everything was split correctly
     for index in range(len(responses)):
+        curie = curies[index]
         msg = responses[index].json()["message"]
-        assert "knowledge_graph" in msg
-        # Check that the corresponding node is present
-        assert curies[index] in msg["knowledge_graph"]["nodes"]
+        validate_message(
+            {
+                "knowledge_graph":
+                    f"""
+                    {curie} biolink:treats MONDO:0005148
+                    """,
+                "results": [
+                    f"""
+                    node_bindings:
+                        n0 {curie}
+                        n1 MONDO:0005148
+                    edge_bindings:
+                        n0n1 {curie}-MONDO:0005148
+                    """
+                ],
+            },
+            msg
+        )
+
+@pytest.mark.asyncio
+@with_kp_overlay(
+    "http://kp1/query",
+    kp_data = \
+        """
+        MONDO:0005148(( category biolink:Disease ))
+        CHEBI:6801(( category biolink:ChemicalSubstance ))
+        CHEBI:6801-- predicate biolink:treats -->MONDO:0005148
+        CHEBI:6802(( category biolink:ChemicalSubstance ))
+        CHEBI:6802-- predicate biolink:treats -->MONDO:0005148
+        CHEBI:6803(( category biolink:ChemicalSubstance ))
+        CHEBI:6803-- predicate biolink:affects -->MONDO:0005148
+        """,
+    request_qty = 3,
+    request_duration = datetime.timedelta(seconds = 1)
+)
+async def test_mixed_batching(client):
+    """ Test that we handle a mixed of identical and differing queries """
+
+    # Register kp
+    kp_info = {
+        "url" : "http://kp1/query",
+        "request_qty" : 1,
+        "request_duration" : 1,
+    }
+    response = await client.post("/register/kp1", json=kp_info)
+    assert response.status_code == 200
+
+    # Wait for batch processing thread to get ready
+    await asyncio.sleep(1)
+
+    qg_template = {
+        "nodes" : {
+            "n0" : { "ids" : [] },
+            "n1" : { "categories" : ["biolink:Disease"] },
+        },
+        "edges" : {
+            "n0n1" : {
+                "subject" : "n0",
+                "object" : "n1",
+                "predicates" : [],
+            }
+        },
+    }
+
+    qgs = []
+
+    # Q1
+    qg = copy.deepcopy(qg_template)
+    qg["nodes"]["n0"]["ids"].append("CHEBI:6801")
+    qg["edges"]["n0n1"]["predicates"].append("biolink:treats")
+    qgs.append(qg)
+
+    # Q2 (merged with Q1)
+    qg = copy.deepcopy(qg_template)
+    qg["nodes"]["n0"]["ids"].append("CHEBI:6802")
+    qg["edges"]["n0n1"]["predicates"].append("biolink:treats")
+    qgs.append(qg)
+
+    # Q3 (not merged)
+    qg = copy.deepcopy(qg_template)
+    qg["nodes"]["n0"]["ids"].append("CHEBI:6802")
+    # Different predicate
+    qg["edges"]["n0n1"]["predicates"].append("biolink:affects")
+    qgs.append(qg)
+
+    # Submit queries
+    responses = await asyncio.gather(
+        *(
+            client.post(
+                "/query/kp1",
+                json = {"message" : { "query_graph" : qg}}
+            )
+            for qg in qgs
+        )
+    )
+
+    # Verify that everything was split correctly
+
+    # Q1
+    validate_message(
+        {
+            "knowledge_graph":
+                f"""
+                CHEBI:6801 biolink:treats MONDO:0005148
+                """,
+            "results": [
+                f"""
+                node_bindings:
+                    n0 CHEBI:6801
+                    n1 MONDO:0005148
+                edge_bindings:
+                    n0n1 CHEBI:6801-MONDO:0005148
+                """
+            ],
+        },
+        responses[0].json()["message"]
+    )
