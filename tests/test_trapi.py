@@ -1,7 +1,7 @@
 import copy
 from tests.utils import validate_message
 import pytest
-from trapi_throttle.trapi import UnableToMerge, filter_by_kgraph_id, merge_qgraphs_by_id
+from trapi_throttle.trapi import UnableToMerge, filter_by_curie_mapping, merge_qgraphs_by_id
 
 def test_merge_qgraphs_simple():
     """ Test that we can merge two query graphs """

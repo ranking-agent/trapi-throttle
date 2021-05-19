@@ -1,10 +1,13 @@
 """Server routes"""
 import asyncio
 import concurrent.futures
+import copy
 import datetime
 from functools import partial
 import logging
 import pprint
+from trapi_throttle.utils import get_equal_dict_values
+from trapi_throttle.trapi import UnableToMerge, extract_curies, filter_by_curie_mapping, filter_by_curie_mapping, merge_qgraphs_by_id
 import uuid
 import httpx
 
@@ -123,21 +126,68 @@ async def process_batch(kp_id):
             RedisValue(APP.state.redis, f"{kp_id}:buffer:{request_id}")
             for request_id in batch_request_ids
         ]
+
         request_values = await asyncio.gather(*[
             request_value_db.get() for request_value_db in request_values_db
         ])
 
-        # TODO Implement merging utility
-        merged_request_value = request_values[0]
+        # Build a mapping of request_ids to request_values
+        # for convenience
+        request_value_mapping = {
+            request_id : request_value
+            for request_id, request_value in
+            zip(batch_request_ids, request_values)
+        }
+
+        # Extract a curie mapping from each request
+        request_curie_mapping = {
+            request_id: extract_curies(request_value["message"]["query_graph"])
+            for request_id, request_value in request_value_mapping.items()
+        }
+
+        breakpoint()
+
+        # Find requests that are the same (those that we can merge)
+        # This disregards non-matching IDs because the IDs have been
+        # removed with the extract_curie method
+        request_value_mapping = get_equal_dict_values(request_value_mapping)
+
+        # Filter curie mapping to only include matching requests
+        request_curie_mapping = {
+            k:v for k,v in request_curie_mapping.items()
+            if k in request_value_mapping
+        }
+
+        # Pull first value from request_value_mapping
+        # to use as a template for our merged request
+        merged_request_value = copy.deepcopy(
+            next(iter(request_value_mapping.values()))
+        )
+
+        # Update merged request using curie mapping
+        for curie_mapping in request_curie_mapping.values():
+            for node_id, node_curies in curie_mapping.items():
+                node = merged_request_value["message"]["query_graph"]["nodes"][node_id]
+                if "id" not in node:
+                    node["id"] = []
+                node["id"].extend(node_curies)
+
 
         async with httpx.AsyncClient() as client:
             response = await client.post(kp_info.url, json = merged_request_value)
 
-        # TODO Implement split utility
-        for response_id in batch_request_ids:
-            await APP.state.redis.set(
-                f"{kp_id}:finished:{response_id}",
-                response.content,
+        message = response.json()["message"]
+
+        # Split using the request_curie_mapping
+        for request_id, curie_mapping in request_curie_mapping.items():
+            message_filtered = copy.deepcopy(message)
+            filter_by_curie_mapping(
+                message_filtered, curie_mapping
+            )
+
+            finished_value = RedisValue(APP.state.redis, f"{kp_id}:finished:{request_id}")
+            await finished_value.set(
+                { "message" : message_filtered },
             )
 
         # Update TAT
