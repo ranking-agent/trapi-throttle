@@ -176,7 +176,7 @@ async def test_mixed_batching(client, clear_redis):
 
     # Q3 (not merged)
     qg = copy.deepcopy(qg_template)
-    qg["nodes"]["n0"]["ids"].append("CHEBI:6802")
+    qg["nodes"]["n0"]["ids"].append("CHEBI:6803")
     # Different predicate
     qg["edges"]["n0n1"]["predicates"].append("biolink:affects")
     qgs.append(qg)
@@ -212,4 +212,44 @@ async def test_mixed_batching(client, clear_redis):
             ],
         },
         responses[0].json()["message"]
+    )
+
+    # Q2
+    validate_message(
+        {
+            "knowledge_graph":
+                f"""
+                CHEBI:6802 biolink:treats MONDO:0005148
+                """,
+            "results": [
+                f"""
+                node_bindings:
+                    n0 CHEBI:6802
+                    n1 MONDO:0005148
+                edge_bindings:
+                    n0n1 CHEBI:6802-MONDO:0005148
+                """
+            ],
+        },
+        responses[1].json()["message"]
+    )
+
+    # Q3
+    validate_message(
+        {
+            "knowledge_graph":
+                f"""
+                CHEBI:6803 biolink:affects MONDO:0005148
+                """,
+            "results": [
+                f"""
+                node_bindings:
+                    n0 CHEBI:6803
+                    n1 MONDO:0005148
+                edge_bindings:
+                    n0n1 CHEBI:6803-MONDO:0005148
+                """
+            ],
+        },
+        responses[2].json()["message"]
     )
