@@ -1,3 +1,4 @@
+import asyncio
 
 def all_equal(values: list):
     """ Check that all values in given list are equal """
@@ -9,4 +10,13 @@ def get_equal_dict_values(dct: dict):
     return {
         k:v for k,v in dct.items() if
         v == first_value
+    }
+
+
+async def gather_dict(dct):
+    """ Gather a dict of coroutines """
+    values = await asyncio.gather(*dct.values())
+    return {
+        k:v for k,v in
+        zip(dct.keys(), values)
     }
