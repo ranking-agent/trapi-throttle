@@ -7,7 +7,7 @@ from functools import partial
 import logging
 import pprint
 from trapi_throttle.utils import get_equal_dict_values
-from trapi_throttle.trapi import UnableToMerge, extract_curies, filter_by_curie_mapping, filter_by_curie_mapping, merge_qgraphs_by_id
+from trapi_throttle.trapi import extract_curies, filter_by_curie_mapping
 import uuid
 import httpx
 
@@ -145,8 +145,6 @@ async def process_batch(kp_id):
             for request_id, request_value in request_value_mapping.items()
         }
 
-        breakpoint()
-
         # Find requests that are the same (those that we can merge)
         # This disregards non-matching IDs because the IDs have been
         # removed with the extract_curie method
@@ -173,22 +171,27 @@ async def process_batch(kp_id):
                 node["id"].extend(node_curies)
 
 
+        # Make request
         async with httpx.AsyncClient() as client:
             response = await client.post(kp_info.url, json = merged_request_value)
-
         message = response.json()["message"]
 
-        # Split using the request_curie_mapping
         for request_id, curie_mapping in request_curie_mapping.items():
+            # Split using the request_curie_mapping
             message_filtered = copy.deepcopy(message)
             filter_by_curie_mapping(
                 message_filtered, curie_mapping
             )
 
+            # Write finished value to DB
             finished_value = RedisValue(APP.state.redis, f"{kp_id}:finished:{request_id}")
             await finished_value.set(
                 { "message" : message_filtered },
             )
+
+            # Remove value from buffer
+            buffer_value = RedisValue(APP.state.redis, f"{kp_id}:buffer:{request_id}")
+            await buffer_value.delete()
 
         # Update TAT
         interval = kp_info.request_duration / kp_info.request_qty
