@@ -6,7 +6,7 @@ import datetime
 from functools import partial
 import logging
 import pprint
-from trapi_throttle.utils import get_equal_dict_values
+from trapi_throttle.utils import gather_dict, get_equal_dict_values
 from trapi_throttle.trapi import extract_curies, filter_by_curie_mapping
 import uuid
 import httpx
@@ -122,22 +122,11 @@ async def process_batch(kp_id):
         # Process batch
         batch_request_ids = [key.split(':')[-1] for key in batch_keys]
 
-        request_values_db = [
-            RedisValue(APP.state.redis, f"{kp_id}:buffer:{request_id}")
+        request_values_db_get = {
+            request_id : RedisValue(APP.state.redis, f"{kp_id}:buffer:{request_id}").get()
             for request_id in batch_request_ids
-        ]
-
-        request_values = await asyncio.gather(*[
-            request_value_db.get() for request_value_db in request_values_db
-        ])
-
-        # Build a mapping of request_ids to request_values
-        # for convenience
-        request_value_mapping = {
-            request_id : request_value
-            for request_id, request_value in
-            zip(batch_request_ids, request_values)
         }
+        request_value_mapping = await gather_dict(request_values_db_get)
 
         # Extract a curie mapping from each request
         request_curie_mapping = {
@@ -176,22 +165,26 @@ async def process_batch(kp_id):
             response = await client.post(kp_info.url, json = merged_request_value)
         message = response.json()["message"]
 
+        response_values_db_set = {}
+        request_values_db_del = {}
+
         for request_id, curie_mapping in request_curie_mapping.items():
             # Split using the request_curie_mapping
             message_filtered = copy.deepcopy(message)
-            filter_by_curie_mapping(
-                message_filtered, curie_mapping
-            )
+            filter_by_curie_mapping(message_filtered, curie_mapping)
 
             # Write finished value to DB
-            finished_value = RedisValue(APP.state.redis, f"{kp_id}:finished:{request_id}")
-            await finished_value.set(
-                { "message" : message_filtered },
-            )
+            response_values_db_set[request_id] = \
+                RedisValue(
+                    APP.state.redis, f"{kp_id}:finished:{request_id}"
+                ).set({ "message" : message_filtered })
 
             # Remove value from buffer
-            buffer_value = RedisValue(APP.state.redis, f"{kp_id}:buffer:{request_id}")
-            await buffer_value.delete()
+            request_values_db_del[request_id] = \
+                RedisValue(APP.state.redis, f"{kp_id}:buffer:{request_id}").delete()
+
+        await gather_dict(response_values_db_set)
+        await gather_dict(request_values_db_del)
 
         # Update TAT
         interval = kp_info.request_duration / kp_info.request_qty
