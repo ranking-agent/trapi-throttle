@@ -4,12 +4,15 @@ import copy
 import datetime
 import tempfile
 
+import aioredis
 from starlette.responses import JSONResponse
 import pytest
 import httpx
 from asgi_lifespan import LifespanManager
 
 from trapi_throttle.server import APP
+from trapi_throttle.config import settings
+
 from .utils import validate_message, with_kp_overlay
 
 @pytest.fixture
@@ -17,6 +20,12 @@ async def client():
     async with httpx.AsyncClient(app=APP, base_url="http://test") as client, \
                LifespanManager(APP):
         yield client
+
+@pytest.fixture
+async def clear_redis():
+    r = await aioredis.create_redis(settings.redis_url)
+    await r.flushdb()
+    yield
 
 
 @pytest.mark.asyncio
@@ -35,7 +44,7 @@ async def client():
     request_qty = 3,
     request_duration = datetime.timedelta(seconds = 1)
 )
-async def test_batch(client):
+async def test_batch(client, clear_redis):
     """ Test that we correctly batch 3 queries into 1 """
 
     # Register kp
@@ -122,7 +131,7 @@ async def test_batch(client):
     request_qty = 3,
     request_duration = datetime.timedelta(seconds = 1)
 )
-async def test_mixed_batching(client):
+async def test_mixed_batching(client, clear_redis):
     """ Test that we handle a mixed of identical and differing queries """
 
     # Register kp
