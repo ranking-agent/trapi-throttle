@@ -4,8 +4,10 @@ from collections import defaultdict
 from trapi_throttle.utils import all_equal
 from reasoner_pydantic import Message, QueryGraph
 
+
 class UnableToMerge(BaseException):
     """ Unable to merge given query graphs """
+
 
 def extract_curies(qgraph: QueryGraph) -> dict[str, list[str]]:
     """
@@ -13,10 +15,11 @@ def extract_curies(qgraph: QueryGraph) -> dict[str, list[str]]:
     return them as a mapping of node_id -> curie_list
     """
     return {
-        node_id : curies
+        node_id: curies
         for node_id, node in qgraph["nodes"].items()
         if (curies := node.pop("id")) is not None
     }
+
 
 def remove_unbound_from_kg(message):
     """
@@ -35,13 +38,14 @@ def remove_unbound_from_kg(message):
                 bound_kedges.add(nb["id"])
 
     message["knowledge_graph"]["nodes"] = {
-        nid:node for nid,node in message["knowledge_graph"]["nodes"].items()
+        nid: node for nid, node in message["knowledge_graph"]["nodes"].items()
         if nid in bound_knodes
     }
     message["knowledge_graph"]["edges"] = {
-        eid:edge for eid,edge in message["knowledge_graph"]["edges"].items()
+        eid: edge for eid, edge in message["knowledge_graph"]["edges"].items()
         if eid in bound_kedges
     }
+
 
 def result_contains_node_bindings(
         result,

@@ -41,6 +41,7 @@ APP.add_middleware(
     **CORS_OPTIONS,
 )
 
+
 @APP.on_event("startup")
 async def startup_event():
     # Print config
@@ -55,10 +56,12 @@ async def startup_event():
         encoding="utf-8",
     )
 
+
 @APP.on_event('shutdown')
 async def shutdown_event():
     APP.state.redis.close()
     await APP.state.redis.wait_closed()
+
 
 class KPInformation(BaseModel):
     url: AnyHttpUrl
@@ -87,7 +90,7 @@ async def process_batch(kp_id):
     )
 
     # Use a new connection because subscribe method alters the connection
-    conn = await aioredis.create_redis(settings.redis_url, encoding = "utf-8")
+    conn = await aioredis.create_redis(settings.redis_url, encoding="utf-8")
 
     # Subscribe to changes to the buffer
     kp_buffer_pattern = f"__keyspace@0__:{kp_id}:buffer:*"
@@ -123,7 +126,8 @@ async def process_batch(kp_id):
         batch_request_ids = [key.split(':')[-1] for key in batch_keys]
 
         request_values_db_get = {
-            request_id : RedisValue(APP.state.redis, f"{kp_id}:buffer:{request_id}").get()
+            request_id: RedisValue(
+                APP.state.redis, f"{kp_id}:buffer:{request_id}").get()
             for request_id in batch_request_ids
         }
         request_value_mapping = await gather_dict(request_values_db_get)
@@ -141,7 +145,7 @@ async def process_batch(kp_id):
 
         # Filter curie mapping to only include matching requests
         request_curie_mapping = {
-            k:v for k,v in request_curie_mapping.items()
+            k: v for k, v in request_curie_mapping.items()
             if k in request_value_mapping
         }
 
@@ -159,10 +163,9 @@ async def process_batch(kp_id):
                     node["id"] = []
                 node["id"].extend(node_curies)
 
-
         # Make request
         async with httpx.AsyncClient() as client:
-            response = await client.post(kp_info.url, json = merged_request_value)
+            response = await client.post(kp_info.url, json=merged_request_value)
         message = response.json()["message"]
 
         response_values_db_set = {}
@@ -177,11 +180,12 @@ async def process_batch(kp_id):
             response_values_db_set[request_id] = \
                 RedisValue(
                     APP.state.redis, f"{kp_id}:finished:{request_id}"
-                ).set({ "message" : message_filtered })
+            ).set({"message": message_filtered})
 
             # Remove value from buffer
             request_values_db_del[request_id] = \
-                RedisValue(APP.state.redis, f"{kp_id}:buffer:{request_id}").delete()
+                RedisValue(APP.state.redis,
+                           f"{kp_id}:buffer:{request_id}").delete()
 
         await gather_dict(response_values_db_set)
         await gather_dict(request_values_db_del)
@@ -195,6 +199,7 @@ async def process_batch(kp_id):
     conn.close()
     await conn.wait_closed()
 
+
 @APP.post("/register/{kp_id}")
 async def register_kp(
         kp_id: str,
@@ -206,7 +211,7 @@ async def register_kp(
     loop = asyncio.get_event_loop()
     loop.create_task(process_batch(kp_id))
 
-    return {"status" : "created"}
+    return {"status": "created"}
 
 
 @APP.post('/query/{kp_id}')
@@ -216,22 +221,23 @@ async def query(
 ) -> Query:
     """ Queue up a query for batching and return when completed """
 
-
     # Insert query into db for processing
     request_id = uuid.uuid1()
-    query_input_db = RedisValue(APP.state.redis, f"{kp_id}:buffer:{request_id}")
+    query_input_db = RedisValue(
+        APP.state.redis, f"{kp_id}:buffer:{request_id}")
     await query_input_db.set(query.dict())
 
     # Wait for query to be processed
     # Use a new connection because subscribe method alters the connection
-    conn = await aioredis.create_redis(settings.redis_url, encoding = "utf-8")
+    conn = await aioredis.create_redis(settings.redis_url, encoding="utf-8")
     finished_notification_channel, = await conn.subscribe(
         f"__keyspace@0__:{kp_id}:finished:{request_id}")
 
     await finished_notification_channel.get()
 
     # Return output value and remove from database
-    query_output_db = RedisValue(APP.state.redis, f"{kp_id}:finished:{request_id}")
-    output =  await query_output_db.get()
+    query_output_db = RedisValue(
+        APP.state.redis, f"{kp_id}:finished:{request_id}")
+    output = await query_output_db.get()
     await query_output_db.delete()
     return output

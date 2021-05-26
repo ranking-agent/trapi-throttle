@@ -6,7 +6,6 @@ import json
 from .config import settings
 
 
-
 def mapd(f, d):
     """ Map function over dictionary values """
     return {k: f(v) for k, v in d.items()}
