@@ -71,6 +71,7 @@ def profile(extra_args):
     """
     run_command(command)
 
+
 def lock(extra_args):
     """
     Write requirements-lock.txt and requirements-test-lock.txt

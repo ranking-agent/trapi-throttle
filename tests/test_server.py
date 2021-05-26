@@ -15,11 +15,13 @@ from trapi_throttle.config import settings
 
 from .utils import validate_message, with_kp_overlay
 
+
 @pytest.fixture
 async def client():
     async with httpx.AsyncClient(app=APP, base_url="http://test") as client, \
-               LifespanManager(APP):
+            LifespanManager(APP):
         yield client
+
 
 @pytest.fixture
 async def clear_redis():
@@ -31,8 +33,7 @@ async def clear_redis():
 @pytest.mark.asyncio
 @with_kp_overlay(
     "http://kp1/query",
-    kp_data = \
-        """
+    kp_data="""
         MONDO:0005148(( category biolink:Disease ))
         CHEBI:6801(( category biolink:ChemicalSubstance ))
         CHEBI:6801-- predicate biolink:treats -->MONDO:0005148
@@ -41,17 +42,17 @@ async def clear_redis():
         CHEBI:6803(( category biolink:ChemicalSubstance ))
         CHEBI:6803-- predicate biolink:treats -->MONDO:0005148
         """,
-    request_qty = 3,
-    request_duration = datetime.timedelta(seconds = 1)
+    request_qty=3,
+    request_duration=datetime.timedelta(seconds=1)
 )
 async def test_batch(client, clear_redis):
     """ Test that we correctly batch 3 queries into 1 """
 
     # Register kp
     kp_info = {
-        "url" : "http://kp1/query",
-        "request_qty" : 1,
-        "request_duration" : 1,
+        "url": "http://kp1/query",
+        "request_qty": 1,
+        "request_duration": 1,
     }
     response = await client.post("/register/kp1", json=kp_info)
     assert response.status_code == 200
@@ -60,15 +61,15 @@ async def test_batch(client, clear_redis):
     await asyncio.sleep(1)
 
     qg_template = {
-        "nodes" : {
-            "n0" : { "ids" : [] },
-            "n1" : { "categories" : ["biolink:Disease"] },
+        "nodes": {
+            "n0": {"ids": []},
+            "n1": {"categories": ["biolink:Disease"]},
         },
-        "edges" : {
-            "n0n1" : {
-                "subject" : "n0",
-                "object" : "n1",
-                "predicates" : ["biolink:treats"],
+        "edges": {
+            "n0n1": {
+                "subject": "n0",
+                "object": "n1",
+                "predicates": ["biolink:treats"],
             }
         },
     }
@@ -86,7 +87,7 @@ async def test_batch(client, clear_redis):
         *(
             client.post(
                 "/query/kp1",
-                json = {"message" : { "query_graph" : qg}}
+                json={"message": {"query_graph": qg}}
             )
             for qg in qgs
         )
@@ -115,11 +116,11 @@ async def test_batch(client, clear_redis):
             msg
         )
 
+
 @pytest.mark.asyncio
 @with_kp_overlay(
     "http://kp1/query",
-    kp_data = \
-        """
+    kp_data="""
         MONDO:0005148(( category biolink:Disease ))
         CHEBI:6801(( category biolink:ChemicalSubstance ))
         CHEBI:6801-- predicate biolink:treats -->MONDO:0005148
@@ -128,17 +129,17 @@ async def test_batch(client, clear_redis):
         CHEBI:6803(( category biolink:ChemicalSubstance ))
         CHEBI:6803-- predicate biolink:affects -->MONDO:0005148
         """,
-    request_qty = 3,
-    request_duration = datetime.timedelta(seconds = 1)
+    request_qty=3,
+    request_duration=datetime.timedelta(seconds=1)
 )
 async def test_mixed_batching(client, clear_redis):
     """ Test that we handle a mixed of identical and differing queries """
 
     # Register kp
     kp_info = {
-        "url" : "http://kp1/query",
-        "request_qty" : 1,
-        "request_duration" : 1,
+        "url": "http://kp1/query",
+        "request_qty": 1,
+        "request_duration": 1,
     }
     response = await client.post("/register/kp1", json=kp_info)
     assert response.status_code == 200
@@ -147,15 +148,15 @@ async def test_mixed_batching(client, clear_redis):
     await asyncio.sleep(1)
 
     qg_template = {
-        "nodes" : {
-            "n0" : { "ids" : [] },
-            "n1" : { "categories" : ["biolink:Disease"] },
+        "nodes": {
+            "n0": {"ids": []},
+            "n1": {"categories": ["biolink:Disease"]},
         },
-        "edges" : {
-            "n0n1" : {
-                "subject" : "n0",
-                "object" : "n1",
-                "predicates" : [],
+        "edges": {
+            "n0n1": {
+                "subject": "n0",
+                "object": "n1",
+                "predicates": [],
             }
         },
     }
@@ -186,7 +187,7 @@ async def test_mixed_batching(client, clear_redis):
         *(
             client.post(
                 "/query/kp1",
-                json = {"message" : { "query_graph" : qg}}
+                json={"message": {"query_graph": qg}}
             )
             for qg in qgs
         )

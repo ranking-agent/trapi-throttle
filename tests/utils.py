@@ -11,9 +11,11 @@ from asgiar import ASGIAR
 
 from simple_kp.testing import kp_app
 
+
 def url_to_host(url):
     # TODO modify ASGIAR to accept a URL instead of a host
     return urlparse(url).netloc
+
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """
@@ -21,6 +23,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     Returns 429 if the rate limit is exceeded
     """
+
     def __init__(self, app,
                  request_qty: int,
                  request_duration: datetime.timedelta
@@ -33,8 +36,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         if "start_time" not in self.rate_limit_tracker:
             self.rate_limit_tracker = {
-                "start_time" : datetime.datetime.now(),
-                "qty" : 0
+                "start_time": datetime.datetime.now(),
+                "qty": 0
             }
         time_since_last_request = \
             datetime.datetime.now() - self.rate_limit_tracker["start_time"]
@@ -47,7 +50,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Check that we are not above quantity
         self.rate_limit_tracker["qty"] += 1
         if self.rate_limit_tracker["qty"] > self.request_qty:
-            return Response(status_code = 429)
+            return Response(status_code=429)
 
         response = await call_next(request)
         return response
@@ -75,14 +78,15 @@ async def response_overlay(
 
         app.add_middleware(
             RateLimitMiddleware,
-            request_qty = request_qty,
-            request_duration = request_duration,
+            request_qty=request_qty,
+            request_duration=request_duration,
         )
 
         await stack.enter_async_context(
             ASGIAR(app, host=url_to_host(url))
         )
         yield
+
 
 @asynccontextmanager
 async def kp_overlay(
@@ -96,11 +100,11 @@ async def kp_overlay(
     Returns 429 if the provided rate limit is exceeded
     """
     async with AsyncExitStack() as stack:
-        async with kp_app(data = kp_data) as app:
+        async with kp_app(data=kp_data) as app:
             app.add_middleware(
                 RateLimitMiddleware,
-                request_qty = request_qty,
-                request_duration = request_duration,
+                request_qty=request_qty,
+                request_duration=request_duration,
             )
 
             await stack.enter_async_context(
@@ -118,6 +122,7 @@ def with_context(context, *args_, **kwargs_):
                 await func(*args, **kwargs)
         return wrapper
     return decorator
+
 
 with_response_overlay = partial(with_context, response_overlay)
 with_kp_overlay = partial(with_context, kp_overlay)
