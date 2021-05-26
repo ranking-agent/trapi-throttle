@@ -180,8 +180,7 @@ async def process_batch(kp_id):
 
         for request_id, curie_mapping in request_curie_mapping.items():
             # Split using the request_curie_mapping
-            message_filtered = copy.deepcopy(message)
-            filter_by_curie_mapping(message_filtered, curie_mapping)
+            message_filtered = filter_by_curie_mapping(message, curie_mapping)
 
             # Write finished value to DB
             response_values_db_set[request_id] = \
