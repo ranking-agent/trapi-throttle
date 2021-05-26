@@ -1,10 +1,15 @@
 aiosqlite==0.17.0
 asgi-lifespan==1.0.1
-asgiar @ git+git://github.com/patrickkwang/asgiar@ee956c00b42d5584e0d82a0f0b4de2373c1a1472
+asgiar==0.1.0
 attrs==21.2.0
+certifi==2020.12.5
 coverage==5.5
 fakeredis==1.4.5
-more-itertools==8.7.0
+h11==0.12.0
+httpcore==0.12.3
+httpx==0.17.1
+idna==3.1
+more-itertools==8.8.0
 packaging==20.9
 pluggy==0.13.1
 py==1.10.0
@@ -13,7 +18,8 @@ pytest==5.4.3
 pytest-asyncio==0.14.0
 pytest-cov==2.10.0
 redis==3.5.3
-simple-kp @ git+git://github.com/ranking-agent/simple-kp@cb37571135965f10e6940de60d6b6df12ea2aec3
+rfc3986==1.5.0
+simple-kp @ git+git://github.com/ranking-agent/simple-kp@35fdd94bbad26693a88019585b90d102d18e8bea
 six==1.16.0
 small-kg @ git+git://github.com/patrickkwang/small-kg@9cfa7ca88e4e74163ebd76b22d26ec3a90a14c1d
 sniffio==1.2.0
