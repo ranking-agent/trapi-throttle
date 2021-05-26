@@ -65,11 +65,12 @@ def result_contains_node_bindings(
 def filter_by_curie_mapping(
         message: Message,
         curie_mapping: dict[str, list[str]]
-):
+) -> Message:
     """
     Filter a message to ensure that all results
     contain the bindings specified in the curie_mapping
     """
+    message = copy.deepcopy(message)
 
     # Update query graph IDs
     for qg_id, curie_list in curie_mapping.items():
@@ -84,3 +85,5 @@ def filter_by_curie_mapping(
 
     # Remove extra knowledge graph nodes
     remove_unbound_from_kg(message)
+
+    return message
