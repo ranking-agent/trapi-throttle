@@ -11,7 +11,7 @@ httpx==0.16.1
 idna==3.1
 pydantic==1.8.2
 python-dotenv==0.17.0
-reasoner-pydantic @ git+git://github.com/ranking-agent/reasoner-pydantic@dee9f5f8fc77508f9c3a828dfdd6765e06a36078
+reasoner-pydantic==1.1.1
 rfc3986==1.5.0
 sniffio==1.2.0
 starlette==0.13.6
