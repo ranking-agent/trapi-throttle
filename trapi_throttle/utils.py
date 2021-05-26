@@ -6,13 +6,12 @@ def all_equal(values: list):
     return all(values[0] == v for v in values)
 
 
-def get_equal_dict_values(dct: dict):
-    """ Return values that are equal to the first list element """
-    first_value = next(iter(dct.values()))
-    return {
-        k: v for k, v in dct.items() if
-        v == first_value
-    }
+def get_keys_with_value(dct: dict, value):
+    """ Return keys where the value matches the given """
+    return [
+        k for k, v in dct.items() if
+        v == value
+    ]
 
 
 async def gather_dict(dct):

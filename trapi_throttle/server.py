@@ -6,7 +6,7 @@ import datetime
 from functools import partial
 import logging
 import pprint
-from trapi_throttle.utils import gather_dict, get_equal_dict_values
+from trapi_throttle.utils import gather_dict, get_keys_with_value
 from trapi_throttle.trapi import extract_curies, filter_by_curie_mapping
 import uuid
 import httpx
@@ -141,12 +141,19 @@ async def process_batch(kp_id):
         # Find requests that are the same (those that we can merge)
         # This disregards non-matching IDs because the IDs have been
         # removed with the extract_curie method
-        request_value_mapping = get_equal_dict_values(request_value_mapping)
+        first_value = next(iter(request_value_mapping.values()))
+        batch_request_ids = get_keys_with_value(
+            request_value_mapping, first_value)
+
+        request_value_mapping = {
+            k: v for k, v in request_value_mapping.items()
+            if k in batch_request_ids
+        }
 
         # Filter curie mapping to only include matching requests
         request_curie_mapping = {
             k: v for k, v in request_curie_mapping.items()
-            if k in request_value_mapping
+            if k in batch_request_ids
         }
 
         # Pull first value from request_value_mapping
