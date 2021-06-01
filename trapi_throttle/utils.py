@@ -21,3 +21,20 @@ async def gather_dict(dct):
         k: v for k, v in
         zip(dct.keys(), values)
     }
+
+def log_request(r):
+    """ Serialize a httpx.Request object into a dict for logging """
+    return {
+        "method" : r.method,
+        "url" : str(r.url),
+        "headers" : dict(r.headers),
+        "data" : r.read().decode()
+    }
+
+def log_response(r):
+    """ Serialize a httpx.Response object into a dict for logging """
+    return {
+        "status_code" : r.status_code,
+        "headers" : dict(r.headers),
+        "data" : r.text,
+    }

@@ -5,7 +5,8 @@ import datetime
 import tempfile
 
 import aioredis
-from starlette.responses import JSONResponse
+import reasoner_pydantic
+from starlette.responses import Response
 import pytest
 import httpx
 from asgi_lifespan import LifespanManager
@@ -13,7 +14,7 @@ from asgi_lifespan import LifespanManager
 from trapi_throttle.server import APP, startup_event, shutdown_event
 from trapi_throttle.config import settings
 
-from .utils import validate_message, with_kp_overlay
+from .utils import validate_message, with_kp_overlay, with_response_overlay
 
 @pytest.fixture
 async def client():
@@ -389,3 +390,93 @@ async def test_no_rate_limit(client, clear_redis):
     end_time = datetime.datetime.utcnow()
 
     assert (start_time - end_time).total_seconds() < 0.1
+
+
+@pytest.mark.asyncio
+@with_response_overlay(
+    "http://kp1/query",
+    response=Response("Internal server error", 500),
+    request_qty=5,
+    request_duration=datetime.timedelta(seconds=1)
+)
+async def test_kp_500(client, clear_redis):
+    """ Test that we return errors if the KP fails to respond """
+
+    # Register kp
+    kp_info = {
+        "url": "http://kp1/query",
+        "request_qty": 1,
+        "request_duration": 1,
+    }
+    response = await client.post("/register/kp1", json=kp_info)
+    assert response.status_code == 200
+
+    # Wait for batch processing thread to get ready
+    await asyncio.sleep(1)
+
+    empty_qg = {
+        "nodes": {},
+        "edges": {},
+    }
+
+    responses = await asyncio.gather(
+        *(
+            client.post(
+                "/kp1/query",
+                json={"message": {"query_graph": empty_qg}}
+            )
+            for _ in range(5)
+        )
+    )
+
+    # Check that all of the requests are served and contain the error message
+    for r in responses:
+        # Check that we keep the status code
+        assert r.status_code == 500
+        # Check that this is a LogEntry
+        reasoner_pydantic.LogEntry.parse_raw(r.text)
+        # Check that we kept the message from the KP
+        r = r.json()
+        assert r["response"]["data"] == "Internal server error"
+
+
+@pytest.mark.asyncio
+async def test_kp_unreachable(client, clear_redis):
+    """ Test that we return errors if the KP is not reachable """
+
+    # Register kp
+    kp_info = {
+        "url": "http://kp1/query",
+        "request_qty": 1,
+        "request_duration": 1,
+    }
+    response = await client.post("/register/kp1", json=kp_info)
+    assert response.status_code == 200
+
+    # Wait for batch processing thread to get ready
+    await asyncio.sleep(1)
+
+    empty_qg = {
+        "nodes": {},
+        "edges": {},
+    }
+
+    responses = await asyncio.gather(
+        *(
+            client.post(
+                "/kp1/query",
+                json={"message": {"query_graph": empty_qg}}
+            )
+            for _ in range(5)
+        )
+    )
+
+    # Check that all of the requests are served and contain the error message
+    for r in responses:
+        # Check that we keep the status code
+        assert r.status_code == 502
+        # Check that this is a LogEntry
+        reasoner_pydantic.LogEntry.parse_raw(r.text)
+        r = r.json()
+        # Check that we add a message
+        assert r["message"] == "Request Error contacting KP"
