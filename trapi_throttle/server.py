@@ -5,23 +5,24 @@ import copy
 import datetime
 from functools import wraps
 import json
+from json.decoder import JSONDecodeError
 import logging
 import traceback
 import pprint
 
-from trapi_throttle.utils import gather_dict, get_keys_with_value
+from trapi_throttle.utils import get_keys_with_value, log_request, log_response
 from trapi_throttle.trapi import extract_curies, filter_by_curie_mapping
+from starlette.responses import JSONResponse
 import uuid
 import uvloop
 import httpx
 
-from pydantic.main import BaseModel
-from pydantic import AnyHttpUrl
+import pydantic
 from trapi_throttle.storage import RedisStream, RedisValue
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from reasoner_pydantic import Query
+from reasoner_pydantic import Query, Response as ReasonerResponse
 
 from .config import settings
 
@@ -71,8 +72,8 @@ async def shutdown_event():
     await APP.state.pool.disconnect()
 
 
-class KPInformation(BaseModel):
-    url: AnyHttpUrl
+class KPInformation(pydantic.main.BaseModel):
+    url: pydantic.AnyHttpUrl
     request_qty: int
     request_duration: datetime.timedelta
 
@@ -179,17 +180,64 @@ async def process_batch(kp_id, kp_info: KPInformation):
                     node["ids"] = []
                 node["ids"].extend(node_curies)
 
-        # Make request
-        async with httpx.AsyncClient() as client:
-            response = await client.post(kp_info.url, json=merged_request_value)
-        message = response.json()["message"]
+        response_values = dict()
+        try:
+            # Make request
+            async with httpx.AsyncClient() as client:
+                response = await client.post(kp_info.url, json=merged_request_value)
+            response.raise_for_status()
 
-        for request_id, curie_mapping in request_curie_mapping.items():
+            # Parse with reasoner_pydantic to validate
+            response = ReasonerResponse.parse_obj(response.json()).dict()
+            message = response["message"]
+
             # Split using the request_curie_mapping
-            message_filtered = filter_by_curie_mapping(message, curie_mapping)
+            for request_id, curie_mapping in request_curie_mapping.items():
+                message_filtered = filter_by_curie_mapping(message, curie_mapping)
+                response_values[request_id] = {"message": message_filtered}
+        except httpx.RequestError as e:
+            for request_id, curie_mapping in request_curie_mapping.items():
+                response_values[request_id] = {
+                    "message": "Request Error contacting KP",
+                    "error": str(e),
+                    "request": log_request(e.request),
+                    "status_code" : 502,
+                }
+        except httpx.HTTPStatusError as e:
+            for request_id, curie_mapping in request_curie_mapping.items():
+                response_values[request_id] = {
+                    "message": "Response Error contacting KP",
+                    "error": str(e),
+                    "request": log_request(e.request),
+                    "response": log_response(e.response),
+                    "status_code": e.response.status_code,
+                }
+        except JSONDecodeError as e:
+            for request_id, curie_mapping in request_curie_mapping.items():
+                response_values[request_id] = {
+                    "message": "Received bad JSON data from KP",
+                    "request": log_request(e.request),
+                    "response": log_response(e.response),
+                    "error": str(e),
+                    "status_code": 502,
+                }
+        except pydantic.ValidationError as e:
+            for request_id, curie_mapping in request_curie_mapping.items():
+                response_values[request_id] = {
+                    "message": "Received non-TRAPI compliant response from KP",
+                    "request": log_request(e.request),
+                    "response": log_response(e.response),
+                    "error": str(e),
+                    "status_code" : 502,
+                }
 
+        # for request_id, curie_mapping in request_curie_mapping.items():
+        #     # Split using the request_curie_mapping
+        #     message_filtered = filter_by_curie_mapping(message, curie_mapping)
+
+        for request_id, response_value in response_values.items():
             # Write finished value to DB
-            await conn.xadd(f"{kp_id}:response:{request_id}", {request_id: json.dumps(message_filtered)})
+            await conn.xadd(f"{kp_id}:response:{request_id}", {request_id: json.dumps(response_value)})
 
         # Update TAT
         # if request_qty == 0 we don't enforce the rate limit
@@ -264,8 +312,9 @@ async def query(
         )
     except StopIteration:
         output = None
-    output = {"message": json.loads(output)}
-    return output
+    output = json.loads(output)
+    status_code = output.pop("status_code", 200)
+    return JSONResponse(output, status_code)
 
 
 @APP.get("/{kp_id}/meta_knowledge_graph")
