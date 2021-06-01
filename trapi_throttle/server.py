@@ -192,8 +192,10 @@ async def process_batch(kp_id, kp_info: KPInformation):
             await conn.xadd(f"{kp_id}:response:{request_id}", {request_id: json.dumps(message_filtered)})
 
         # Update TAT
-        interval = kp_info.request_duration / kp_info.request_qty
-        tat = (datetime.datetime.utcnow() + interval)
+        # if request_qty == 0 we don't enforce the rate limit
+        if kp_info.request_qty > 0:
+            interval = kp_info.request_duration / kp_info.request_qty
+            tat = (datetime.datetime.utcnow() + interval)
 
 
 @APP.post("/register/{kp_id}")
