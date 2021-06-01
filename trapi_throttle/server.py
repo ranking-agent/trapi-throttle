@@ -102,7 +102,11 @@ async def process_batch(kp_id):
 
     # Wait for anything to be added to the buffer
     while await channel.wait_message():
-        await channel.get()
+        # Check for shutdown event
+        msg = await channel.get()
+        key = msg[0].decode().split(":")[-1]
+        if key == "shutdown":
+            break
 
         # Check if we actually have work to do
         batch_keys = await APP.state.redis.keys(f"{kp_id}:buffer:*")
@@ -218,6 +222,15 @@ async def register_kp(
     loop.create_task(process_batch(kp_id))
 
     return {"status": "created"}
+
+@APP.get("/unregister/{kp_id}")
+async def unregister_kp(
+        kp_id: str,
+):
+    # Write shutdown event to buffer
+    await APP.state.redis.set(f"{kp_id}:buffer:shutdown",
+                              datetime.datetime.utcnow().isoformat())
+    return {"status": "removed"}
 
 
 @APP.post('/query/{kp_id}')
