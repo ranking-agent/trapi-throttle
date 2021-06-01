@@ -116,6 +116,12 @@ async def test_batch(client, clear_redis):
             msg
         )
 
+    # Remove registration
+    response = await client.get("/unregister/kp1")
+    assert response.status_code == 200
+    # Wait for unregistration
+    await asyncio.sleep(1)
+
 
 @pytest.mark.asyncio
 @with_kp_overlay(
