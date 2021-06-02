@@ -254,6 +254,9 @@ async def query(
 
     await finished_notification_channel.get()
 
+    conn.close()
+    await conn.wait_closed()
+
     # Return output value and remove from database
     query_output_db = RedisValue(
         APP.state.redis, f"{kp_id}:finished:{request_id}")
