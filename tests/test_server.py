@@ -15,7 +15,6 @@ from trapi_throttle.config import settings
 
 from .utils import validate_message, with_kp_overlay
 
-
 @pytest.fixture
 async def client():
     async with httpx.AsyncClient(app=APP, base_url="http://test") as client, \
@@ -27,6 +26,8 @@ async def client():
 async def clear_redis():
     r = await aioredis.create_redis(settings.redis_url)
     await r.flushdb()
+    r.close()
+    await r.wait_closed()
     yield
 
 
@@ -117,9 +118,9 @@ async def test_batch(client, clear_redis):
         )
 
     # Remove registration
+    await asyncio.sleep(1)
     response = await client.get("/unregister/kp1")
     assert response.status_code == 200
-    # Wait for unregistration
     await asyncio.sleep(1)
 
 
@@ -260,3 +261,9 @@ async def test_mixed_batching(client, clear_redis):
         },
         responses[2].json()["message"]
     )
+
+    # Remove registration
+    await asyncio.sleep(1)
+    response = await client.get("/unregister/kp1")
+    assert response.status_code == 200
+    await asyncio.sleep(1)
