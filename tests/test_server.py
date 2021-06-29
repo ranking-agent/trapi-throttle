@@ -84,14 +84,17 @@ async def test_batch(client, clear_redis):
         qgs.append(qg)
 
     # Submit queries
-    responses = await asyncio.gather(
-        *(
-            client.post(
-                "/query/kp1",
-                json={"message": {"query_graph": qg}}
+    responses = await asyncio.wait_for(
+        asyncio.gather(
+            *(
+                client.post(
+                    "/query/kp1",
+                    json={"message": {"query_graph": qg}}
+                )
+                for qg in qgs
             )
-            for qg in qgs
-        )
+        ),
+        timeout=20,
     )
 
     # Verify that everything was split correctly
@@ -190,14 +193,17 @@ async def test_mixed_batching(client, clear_redis):
     qgs.append(qg)
 
     # Submit queries
-    responses = await asyncio.gather(
-        *(
-            client.post(
-                "/query/kp1",
-                json={"message": {"query_graph": qg}}
+    responses = await asyncio.wait_for(
+        asyncio.gather(
+            *(
+                client.post(
+                    "/query/kp1",
+                    json={"message": {"query_graph": qg}}
+                )
+                for qg in qgs
             )
-            for qg in qgs
-        )
+        ),
+        timeout=20,
     )
 
     # Verify that everything was split correctly
