@@ -303,3 +303,26 @@ async def test_metakg(client, clear_redis):
     # get meta knowledge graph
     response = await client.get("/kp1/meta_knowledge_graph")
     assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_duplicate(client, clear_redis):
+    """ Test that we correctly batch 3 queries into 1 """
+
+    # Register kp
+    kp_info = {
+        "url": "http://kp1/query",
+        "request_qty": 1,
+        "request_duration": 1,
+    }
+    response = await client.post("/register/kp1", json=kp_info)
+    assert response.status_code == 200
+
+    # and again, differently
+    kp_info = {
+        "url": "http://kp1/query",
+        "request_qty": 2,
+        "request_duration": 1,
+    }
+    response = await client.post("/register/kp1", json=kp_info)
+    assert response.status_code == 409
