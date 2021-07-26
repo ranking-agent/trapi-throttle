@@ -19,7 +19,7 @@ from pydantic.main import BaseModel
 from pydantic import AnyHttpUrl
 from trapi_throttle.storage import RedisStream, RedisValue
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from reasoner_pydantic import Query
 
@@ -215,6 +215,8 @@ async def register_kp(
     await kp_info_db.set(kp_info.json())
 
     info = json.loads(kp_info.json())
+    if kp_id in APP.state.servers and APP.state.servers[kp_id] != info:
+        raise HTTPException(409, f"{kp_id} already exists")
     APP.state.servers[kp_id] = info
 
     loop = asyncio.get_event_loop()
