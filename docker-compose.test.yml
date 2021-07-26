@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.test
+    environment:
+      REDIS_URL: 'redis://redis'
     ports:
       - '7830:7830'
   redis:
