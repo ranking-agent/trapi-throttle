@@ -62,6 +62,7 @@ async def startup_event():
     APP.state.redis = aioredis.Redis(connection_pool=APP.state.pool)
 
     APP.state.workers = dict()
+    APP.state.servers = dict()
 
 
 @APP.on_event('shutdown')
@@ -213,6 +214,9 @@ async def register_kp(
     kp_info_db = RedisValue(APP.state.redis, f"{kp_id}:info")
     await kp_info_db.set(kp_info.json())
 
+    info = json.loads(kp_info.json())
+    APP.state.servers[kp_id] = info
+
     loop = asyncio.get_event_loop()
     APP.state.workers[kp_id] = loop.create_task(process_batch(kp_id))
 
@@ -224,6 +228,7 @@ async def unregister_kp(
         kp_id: str,
 ):
     """Cancel KP processing task."""
+    APP.state.servers.pop(kp_id)
     task: Task = APP.state.workers.pop(kp_id)
     
     task.cancel()
@@ -266,3 +271,11 @@ async def query(
         output = None
     output = {"message": json.loads(output)}
     return output
+
+
+@APP.get("/{kp_id}/meta_knowledge_graph")
+async def metakg(kp_id: str):
+    url = "/".join(APP.state.servers[kp_id]["url"].split("/")[:-1] + ["meta_knowledge_graph"])
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
+    return response.json()

@@ -275,3 +275,31 @@ async def test_mixed_batching(client, clear_redis):
     response = await client.get("/unregister/kp1")
     assert response.status_code == 200
     # await asyncio.sleep(1)
+
+
+@with_kp_overlay(
+    "http://kp1/query",
+    kp_data="""
+        MONDO:0005148(( category biolink:Disease ))
+        CHEBI:6801(( category biolink:ChemicalSubstance ))
+        CHEBI:6801-- predicate biolink:treats -->MONDO:0005148
+        """,
+    request_qty=3,
+    request_duration=datetime.timedelta(seconds=1)
+)
+@pytest.mark.asyncio
+async def test_metakg(client, clear_redis):
+    """Test /metakg."""
+
+    # Register kp
+    kp_info = {
+        "url": "http://kp1/query",
+        "request_qty": 1,
+        "request_duration": 1,
+    }
+    response = await client.post("/register/kp1", json=kp_info)
+    assert response.status_code == 200
+
+    # get meta knowledge graph
+    response = await client.get("/kp1/meta_knowledge_graph")
+    assert response.status_code == 200
