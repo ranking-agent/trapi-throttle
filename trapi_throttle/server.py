@@ -89,13 +89,8 @@ def log_errors(fcn):
 
 
 @log_errors
-async def process_batch(kp_id):
+async def process_batch(kp_id, kp_info: KPInformation):
     """Set up a subscriber to process batching"""
-    kp_info_db = RedisValue(APP.state.redis, f"{kp_id}:info")
-    tat_db = RedisValue(APP.state.redis, f"{kp_id}:tat")
-
-    kp_info = KPInformation.parse_raw(await kp_info_db.get())
-
     # Initialize the TAT
     #
     # TAT = Theoretical Arrival Time
@@ -105,9 +100,7 @@ async def process_batch(kp_id):
     # This is an implementation of the GCRA algorithm
     # More information can be found here:
     # https://dev.to/astagi/rate-limiting-using-python-and-redis-58gk
-    await tat_db.set(
-        datetime.datetime.utcnow().isoformat()
-    )
+    tat = datetime.datetime.utcnow()
 
     # Use a new connection because subscribe method alters the connection
     conn = await aioredis.Redis.from_url(settings.redis_url, decode_responses=True)
@@ -131,7 +124,6 @@ async def process_batch(kp_id):
         )
 
         now = datetime.datetime.utcnow()
-        tat = datetime.datetime.fromisoformat(await tat_db.get())
 
         time_remaining_seconds = (tat - now).total_seconds()
         # Wait for TAT
@@ -201,8 +193,7 @@ async def process_batch(kp_id):
 
         # Update TAT
         interval = kp_info.request_duration / kp_info.request_qty
-        new_tat = datetime.datetime.utcnow() + interval
-        await tat_db.set(new_tat.isoformat())
+        tat = (datetime.datetime.utcnow() + interval)
 
 
 @APP.post("/register/{kp_id}")
@@ -220,7 +211,7 @@ async def register_kp(
     APP.state.servers[kp_id] = info
 
     loop = asyncio.get_event_loop()
-    APP.state.workers[kp_id] = loop.create_task(process_batch(kp_id))
+    APP.state.workers[kp_id] = loop.create_task(process_batch(kp_id, kp_info))
 
     return {"status": "created"}
 
