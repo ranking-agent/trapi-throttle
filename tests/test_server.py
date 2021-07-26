@@ -88,7 +88,7 @@ async def test_batch(client, clear_redis):
         asyncio.gather(
             *(
                 client.post(
-                    "/query/kp1",
+                    "/kp1/query",
                     json={"message": {"query_graph": qg}}
                 )
                 for qg in qgs
@@ -198,7 +198,7 @@ async def test_mixed_batching(client, clear_redis):
         asyncio.gather(
             *(
                 client.post(
-                    "/query/kp1",
+                    "/kp1/query",
                     json={"message": {"query_graph": qg}}
                 )
                 for qg in qgs
