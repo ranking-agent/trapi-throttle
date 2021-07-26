@@ -1,29 +1,33 @@
 """Server routes"""
 import asyncio
-import concurrent.futures
+from asyncio.tasks import Task
 import copy
 import datetime
-from functools import partial
+from functools import wraps
+import json
 import logging
+import traceback
 import pprint
+
 from trapi_throttle.utils import gather_dict, get_keys_with_value
 from trapi_throttle.trapi import extract_curies, filter_by_curie_mapping
 import uuid
+import uvloop
 import httpx
 
 from pydantic.main import BaseModel
 from pydantic import AnyHttpUrl
-from starlette.responses import Response
-from starlette.background import BackgroundTask
-from trapi_throttle.storage import RedisList, RedisValue
+from trapi_throttle.storage import RedisStream, RedisValue
 
-from fastapi import FastAPI, Request, BackgroundTasks
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from reasoner_pydantic import Query
 
 from .config import settings
 
 import aioredis
+
+asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 LOGGER = logging.getLogger(__name__)
 
@@ -51,16 +55,19 @@ async def startup_event():
     LOGGER.info(f" App Configuration:\n {pretty_config}")
 
     # Create a shared redis pool
-    APP.state.redis = await aioredis.create_redis_pool(
+    APP.state.pool = aioredis.ConnectionPool.from_url(
         settings.redis_url,
-        encoding="utf-8",
+        decode_responses=True,
     )
+    APP.state.redis = aioredis.Redis(connection_pool=APP.state.pool)
+
+    APP.state.workers = dict()
 
 
 @APP.on_event('shutdown')
 async def shutdown_event():
-    APP.state.redis.close()
-    await APP.state.redis.wait_closed()
+    await APP.state.redis.close()
+    await APP.state.pool.disconnect()
 
 
 class KPInformation(BaseModel):
@@ -69,6 +76,18 @@ class KPInformation(BaseModel):
     request_duration: datetime.timedelta
 
 
+def log_errors(fcn):
+    @wraps(fcn)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await fcn(*args, **kwargs)
+        except Exception as err:
+            traceback.print_exc()
+            raise
+    return wrapper
+
+
+@log_errors
 async def process_batch(kp_id):
     """Set up a subscriber to process batching"""
     kp_info_db = RedisValue(APP.state.redis, f"{kp_id}:info")
@@ -90,31 +109,24 @@ async def process_batch(kp_id):
     )
 
     # Use a new connection because subscribe method alters the connection
-    conn = await aioredis.create_redis(settings.redis_url, encoding="utf-8")
+    conn = await aioredis.Redis.from_url(settings.redis_url, decode_responses=True)
 
-    # Subscribe to changes to the buffer
-    kp_buffer_pattern = f"__keyspace@0__:{kp_id}:buffer:*"
-    channel, = await conn.psubscribe(kp_buffer_pattern)
+    request_stream = RedisStream(conn, [f"{kp_id}:request"])
 
-    # TODO figure out why we need to sleep here
-    # for our tests to pass
-    await asyncio.sleep(1)
-
-    # Wait for anything to be added to the buffer
-    while await channel.wait_message():
-        # Check for shutdown event
-        msg = await channel.get()
-        key = msg[0].decode().split(":")[-1]
-        if key == "shutdown":
-            break
-
-        # Check if we actually have work to do
-        batch_keys = await APP.state.redis.keys(f"{kp_id}:buffer:*")
-        if len(batch_keys) == 0:
+    while True:
+        # Get everything in the stream or wait for something to show up
+        msgs = await request_stream.read(timeout=0)
+        if msgs is None:
             continue
 
+        request_id_map = {
+            key: msg[0]
+            for msg in msgs
+            for key in msg[1].keys()
+        }
+
         LOGGER.debug(
-            f"Processing batch of size {len(batch_keys)} for KP {kp_id}"
+            f"Processing batch of size {len(msgs)} for KP {kp_id}"
         )
 
         now = datetime.datetime.utcnow()
@@ -126,15 +138,11 @@ async def process_batch(kp_id):
             LOGGER.debug(f"Waiting {time_remaining_seconds}")
             await asyncio.sleep(time_remaining_seconds)
 
-        # Process batch
-        batch_request_ids = [key.split(':')[-1] for key in batch_keys]
-
-        request_values_db_get = {
-            request_id: RedisValue(
-                APP.state.redis, f"{kp_id}:buffer:{request_id}").get()
-            for request_id in batch_request_ids
+        request_value_mapping = {
+            key: json.loads(value)
+            for msg in msgs
+            for key, value in msg[1].items()
         }
-        request_value_mapping = await gather_dict(request_values_db_get)
 
         # Extract a curie mapping from each request
         request_curie_mapping = {
@@ -148,6 +156,10 @@ async def process_batch(kp_id):
         first_value = next(iter(request_value_mapping.values()))
         batch_request_ids = get_keys_with_value(
             request_value_mapping, first_value)
+        
+        # Remove the requests to be processed from the stream
+        for request_id in batch_request_ids:
+            await conn.xdel(f"{kp_id}:request", request_id_map[request_id])
 
         request_value_mapping = {
             k: v for k, v in request_value_mapping.items()
@@ -170,44 +182,26 @@ async def process_batch(kp_id):
         for curie_mapping in request_curie_mapping.values():
             for node_id, node_curies in curie_mapping.items():
                 node = merged_request_value["message"]["query_graph"]["nodes"][node_id]
-                if "id" not in node:
-                    node["id"] = []
-                node["id"].extend(node_curies)
+                if "ids" not in node:
+                    node["ids"] = []
+                node["ids"].extend(node_curies)
 
         # Make request
         async with httpx.AsyncClient() as client:
             response = await client.post(kp_info.url, json=merged_request_value)
         message = response.json()["message"]
 
-        response_values_db_set = {}
-        request_values_db_del = {}
-
         for request_id, curie_mapping in request_curie_mapping.items():
             # Split using the request_curie_mapping
             message_filtered = filter_by_curie_mapping(message, curie_mapping)
 
             # Write finished value to DB
-            response_values_db_set[request_id] = \
-                RedisValue(
-                    APP.state.redis, f"{kp_id}:finished:{request_id}"
-            ).set({"message": message_filtered})
-
-            # Remove value from buffer
-            request_values_db_del[request_id] = \
-                RedisValue(APP.state.redis,
-                           f"{kp_id}:buffer:{request_id}").delete()
-
-        await gather_dict(response_values_db_set)
-        await gather_dict(request_values_db_del)
+            await conn.xadd(f"{kp_id}:response:{request_id}", {request_id: json.dumps(message_filtered)})
 
         # Update TAT
         interval = kp_info.request_duration / kp_info.request_qty
         new_tat = datetime.datetime.utcnow() + interval
         await tat_db.set(new_tat.isoformat())
-
-    # Close redis connection
-    conn.close()
-    await conn.wait_closed()
 
 
 @APP.post("/register/{kp_id}")
@@ -215,21 +209,30 @@ async def register_kp(
         kp_id: str,
         kp_info: KPInformation,
 ):
+    """Set KP info and start processing task."""
     kp_info_db = RedisValue(APP.state.redis, f"{kp_id}:info")
     await kp_info_db.set(kp_info.json())
 
     loop = asyncio.get_event_loop()
-    loop.create_task(process_batch(kp_id))
+    APP.state.workers[kp_id] = loop.create_task(process_batch(kp_id))
 
     return {"status": "created"}
+
 
 @APP.get("/unregister/{kp_id}")
 async def unregister_kp(
         kp_id: str,
 ):
-    # Write shutdown event to buffer
-    await APP.state.redis.set(f"{kp_id}:buffer:shutdown",
-                              datetime.datetime.utcnow().isoformat())
+    """Cancel KP processing task."""
+    task: Task = APP.state.workers.pop(kp_id)
+    
+    task.cancel()
+
+    try:
+        await task
+    except asyncio.CancelledError:
+        LOGGER.debug(f"Task cancelled: {task}")
+
     return {"status": "removed"}
 
 
@@ -239,27 +242,27 @@ async def query(
         query: Query,
 ) -> Query:
     """ Queue up a query for batching and return when completed """
-
-    # Insert query into db for processing
-    request_id = uuid.uuid1()
-    query_input_db = RedisValue(
-        APP.state.redis, f"{kp_id}:buffer:{request_id}")
-    await query_input_db.set(query.dict())
+    request_id = str(uuid.uuid1())
 
     # Wait for query to be processed
     # Use a new connection because subscribe method alters the connection
-    conn = await aioredis.create_redis(settings.redis_url, encoding="utf-8")
-    finished_notification_channel, = await conn.subscribe(
-        f"__keyspace@0__:{kp_id}:finished:{request_id}")
+    conn = await aioredis.Redis.from_url(settings.redis_url, decode_responses=True)
 
-    await finished_notification_channel.get()
+    # Insert query into db for processing
+    request_stream = RedisStream(conn, [f"{kp_id}:request"])
+    await request_stream.add(request_id, query.dict(exclude_unset=True))
 
-    conn.close()
-    await conn.wait_closed()
+    # Wait for response
+    response_stream = RedisStream(conn, [f"{kp_id}:response:{request_id}"])
+    read = await response_stream.read()
 
-    # Return output value and remove from database
-    query_output_db = RedisValue(
-        APP.state.redis, f"{kp_id}:finished:{request_id}")
-    output = await query_output_db.get()
-    await query_output_db.delete()
+    try:
+        output = next(
+            value
+            for key, value in read[0][1].items()
+            if key == request_id
+        )
+    except StopIteration:
+        output = None
+    output = {"message": json.loads(output)}
     return output

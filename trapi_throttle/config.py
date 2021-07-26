@@ -1,10 +1,9 @@
-from datetime import timedelta
 from pydantic import \
-    BaseSettings, FilePath, RedisDsn, AnyUrl
+    BaseSettings, RedisDsn
 
 
 class Settings(BaseSettings):
-    redis_url: RedisDsn = "redis://redis"
+    redis_url: RedisDsn = "redis://localhost"
 
     class Config:
         env_file = ".env"
