@@ -236,7 +236,7 @@ async def unregister_kp(
     return {"status": "removed"}
 
 
-@APP.post('/query/{kp_id}')
+@APP.post('/{kp_id}/query')
 async def query(
         kp_id: str,
         query: Query,
