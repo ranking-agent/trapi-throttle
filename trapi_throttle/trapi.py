@@ -1,7 +1,5 @@
 import copy
-from collections import defaultdict
 
-from trapi_throttle.utils import all_equal
 from reasoner_pydantic import Message, QueryGraph
 
 
@@ -17,7 +15,7 @@ def extract_curies(qgraph: QueryGraph) -> dict[str, list[str]]:
     return {
         node_id: curies
         for node_id, node in qgraph["nodes"].items()
-        if (curies := node.pop("id")) is not None
+        if (curies := node.pop("ids", None)) is not None
     }
 
 

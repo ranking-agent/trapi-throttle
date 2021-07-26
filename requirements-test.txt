@@ -1,9 +1,8 @@
-asgiar==0.1.0
+asgiar==0.2.0
 fakeredis==1.4.5
 pytest==5.4.3
 pytest-asyncio==0.14.0
 pytest-cov==2.10.0
 asgi-lifespan==1.0.1
-simple-kp @ git+git://github.com/ranking-agent/simple-kp@v1.1.1
-small-kg @ git+git://github.com/patrickkwang/small-kg@main
+simple-kp @ git+git://github.com/TranslatorSRI/simple-kp@v3.0.0
 aiosqlite==0.17.0

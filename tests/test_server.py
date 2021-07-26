@@ -10,24 +10,24 @@ import pytest
 import httpx
 from asgi_lifespan import LifespanManager
 
-from trapi_throttle.server import APP
+from trapi_throttle.server import APP, startup_event, shutdown_event
 from trapi_throttle.config import settings
 
 from .utils import validate_message, with_kp_overlay
 
 @pytest.fixture
 async def client():
-    async with httpx.AsyncClient(app=APP, base_url="http://test") as client, \
-            LifespanManager(APP):
+    async with httpx.AsyncClient(app=APP, base_url="http://test") as client:
+        await startup_event()
         yield client
+        await shutdown_event()
 
 
 @pytest.fixture
 async def clear_redis():
-    r = await aioredis.create_redis(settings.redis_url)
+    r = await aioredis.Redis.from_url(settings.redis_url)
     await r.flushdb()
-    r.close()
-    await r.wait_closed()
+    await r.close()
     yield
 
 
@@ -58,8 +58,8 @@ async def test_batch(client, clear_redis):
     response = await client.post("/register/kp1", json=kp_info)
     assert response.status_code == 200
 
-    # Wait for batch processing thread to get ready
-    await asyncio.sleep(1)
+    # # Wait for batch processing thread to get ready
+    # await asyncio.sleep(3)
 
     qg_template = {
         "nodes": {
@@ -101,6 +101,7 @@ async def test_batch(client, clear_redis):
     for index in range(len(responses)):
         curie = curies[index]
         msg = responses[index].json()["message"]
+        print(msg)
         validate_message(
             {
                 "knowledge_graph":
@@ -124,7 +125,7 @@ async def test_batch(client, clear_redis):
     await asyncio.sleep(1)
     response = await client.get("/unregister/kp1")
     assert response.status_code == 200
-    await asyncio.sleep(1)
+    # await asyncio.sleep(1)
 
 
 @pytest.mark.asyncio
@@ -154,8 +155,8 @@ async def test_mixed_batching(client, clear_redis):
     response = await client.post("/register/kp1", json=kp_info)
     assert response.status_code == 200
 
-    # Wait for batch processing thread to get ready
-    await asyncio.sleep(1)
+    # # Wait for batch processing thread to get ready
+    # await asyncio.sleep(3)
 
     qg_template = {
         "nodes": {
@@ -205,6 +206,7 @@ async def test_mixed_batching(client, clear_redis):
         ),
         timeout=20,
     )
+    # print([response.json() for response in responses])
 
     # Verify that everything was split correctly
 
@@ -272,4 +274,4 @@ async def test_mixed_batching(client, clear_redis):
     await asyncio.sleep(1)
     response = await client.get("/unregister/kp1")
     assert response.status_code == 200
-    await asyncio.sleep(1)
+    # await asyncio.sleep(1)
