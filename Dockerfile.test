@@ -6,10 +6,6 @@ LABEL org.opencontainers.image.source https://github.com/ranking-agent/trapi-thr
 # set up requirements
 WORKDIR /app
 
-# Normal requirements
-ADD requirements-lock.txt .
-RUN pip install -r requirements-lock.txt
-
 # Testing requirements
 ADD requirements-test-lock.txt .
 RUN pip install -r requirements-test-lock.txt

@@ -2,14 +2,12 @@
 import asyncio
 import copy
 import datetime
-import tempfile
 
 import aioredis
 import reasoner_pydantic
 from starlette.responses import Response
 import pytest
 import httpx
-from asgi_lifespan import LifespanManager
 
 from trapi_throttle.server import APP, startup_event, shutdown_event
 from trapi_throttle.config import settings
