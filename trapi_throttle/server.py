@@ -47,8 +47,7 @@ async def startup_event():
 
 @APP.on_event('shutdown')
 async def shutdown_event():
-    await APP.throttle.redis.close()
-    await APP.throttle.pool.disconnect()
+    pass
 
 
 class KPInformation(pydantic.main.BaseModel):
