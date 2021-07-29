@@ -254,7 +254,6 @@ class Throttle():
         request_id = str(uuid.uuid1())
 
         # Wait for query to be processed
-        # Use a new connection because subscribe method alters the connection
         conn = await aioredis.Redis.from_url(self.redis_url, decode_responses=True)
 
         # Insert query into db for processing
