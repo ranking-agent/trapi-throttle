@@ -10,23 +10,20 @@ import logging
 import traceback
 import pprint
 
-from trapi_throttle.utils import get_keys_with_value, log_request, log_response
-from trapi_throttle.trapi import extract_curies, filter_by_curie_mapping
+import aioredis
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+import httpx
+import pydantic
+from reasoner_pydantic import Query, Response as ReasonerResponse
 from starlette.responses import JSONResponse
 import uuid
 import uvloop
-import httpx
-
-import pydantic
-from trapi_throttle.storage import RedisStream, RedisValue
-
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from reasoner_pydantic import Query, Response as ReasonerResponse
 
 from .config import settings
-
-import aioredis
+from .storage import RedisStream, RedisValue
+from .trapi import extract_curies, filter_by_curie_mapping
+from .utils import get_keys_with_value, log_request, log_response
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
