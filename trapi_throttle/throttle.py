@@ -1,5 +1,6 @@
 """Server routes"""
 import asyncio
+from asyncio.queues import QueueEmpty
 from asyncio.tasks import Task
 import copy
 import datetime
@@ -47,18 +48,11 @@ def log_errors(fcn):
 class Throttle():
     """TRAPI Throttle."""
 
-    def __init__(self, *args, redis_url: str = "redis://localhost", **kwargs):
+    def __init__(self, *args, **kwargs):
         """Initialize."""
-        self.redis_url = redis_url
-
-        # Create a shared redis pool
-        self.pool = aioredis.ConnectionPool.from_url(
-            self.redis_url,
-            decode_responses=True,
-        )
-        self.redis = aioredis.Redis(connection_pool=self.pool)
-
         self.workers = dict()
+        self.request_queues: dict[str, asyncio.Queue] = dict()
+        self.response_queues: dict[str, asyncio.Queue] = dict()
         self.servers = dict()
 
     @log_errors
@@ -79,32 +73,28 @@ class Throttle():
         # https://dev.to/astagi/rate-limiting-using-python-and-redis-58gk
         tat = datetime.datetime.utcnow()
 
-        # Use a new connection because subscribe method alters the connection
-        conn = await aioredis.Redis.from_url(self.redis_url, decode_responses=True)
-
-        request_stream = RedisStream(conn, [f"{kp_id}:request"])
+        request_queue = self.request_queues[kp_id]
 
         while True:
             # Get everything in the stream or wait for something to show up
-            msgs = await request_stream.read(timeout=0)
-            if msgs is None:
-                continue
-
-            request_id_map = {
-                key: msg[0]
-                for msg in msgs
-                for key in msg[1].keys()
+            request_id, payload, response_queue = await request_queue.get()
+            request_value_mapping = {
+                request_id: payload
             }
+            response_queues = {
+                request_id: response_queue
+            }
+            while True:
+                try:
+                    request_id, payload, response_queue = request_queue.get_nowait()
+                except QueueEmpty:
+                    break
+                request_value_mapping[request_id] = payload
+                response_queues[request_id] = response_queue
 
             LOGGER.debug(
-                f"Processing batch of size {len(msgs)} for KP {kp_id}"
+                f"Processing batch of size {len(request_value_mapping)} for KP {kp_id}"
             )
-
-            request_value_mapping = {
-                key: json.loads(value)
-                for msg in msgs
-                for key, value in msg[1].items()
-            }
 
             # Extract a curie mapping from each request
             request_curie_mapping = {
@@ -119,9 +109,14 @@ class Throttle():
             batch_request_ids = get_keys_with_value(
                 request_value_mapping, first_value)
             
-            # Remove the requests to be processed from the stream
-            for request_id in batch_request_ids:
-                await conn.xdel(f"{kp_id}:request", request_id_map[request_id])
+            # Re-queue the un-selected requests
+            for request_id in request_value_mapping:
+                if request_id not in batch_request_ids:
+                    await request_queue.put((
+                        request_id,
+                        request_value_mapping[request_id],
+                        response_queues[request_id],
+                    ))
 
             request_value_mapping = {
                 k: v for k, v in request_value_mapping.items()
@@ -139,6 +134,10 @@ class Throttle():
             merged_request_value = copy.deepcopy(
                 next(iter(request_value_mapping.values()))
             )
+
+            # Remove qnode ids
+            for qnode in merged_request_value["message"]["query_graph"]["nodes"].values():
+                qnode.pop("ids", None)
 
             # Update merged request using curie mapping
             for curie_mapping in request_curie_mapping.values():
@@ -201,7 +200,7 @@ class Throttle():
 
             for request_id, response_value in response_values.items():
                 # Write finished value to DB
-                await conn.xadd(f"{kp_id}:response:{request_id}", {request_id: json.dumps(response_value)})
+                await response_queues[request_id].put(response_value)
 
             # if request_qty == 0 we don't enforce the rate limit
             if kp_info.request_qty > 0:
@@ -230,6 +229,8 @@ class Throttle():
         loop = asyncio.get_event_loop()
         self.workers[kp_id] = loop.create_task(self.process_batch(kp_id, kp_info))
 
+        self.request_queues[kp_id] = asyncio.Queue()
+
     async def unregister_kp(
             self,
             kp_id: str,
@@ -252,26 +253,13 @@ class Throttle():
     ) -> Query:
         """ Queue up a query for batching and return when completed """
         request_id = str(uuid.uuid1())
+        response_queue = asyncio.Queue()
 
-        # Wait for query to be processed
-        conn = await aioredis.Redis.from_url(self.redis_url, decode_responses=True)
-
-        # Insert query into db for processing
-        request_stream = RedisStream(conn, [f"{kp_id}:request"])
-        await request_stream.add(request_id, query.dict(exclude_unset=True))
+        # Queue query for processing
+        await self.request_queues[kp_id].put((request_id, query.dict(exclude_unset=True), response_queue))
 
         # Wait for response
-        response_stream = RedisStream(conn, [f"{kp_id}:response:{request_id}"])
-        read = await response_stream.read()
+        output = await response_queue.get()
 
-        try:
-            output = next(
-                value
-                for key, value in read[0][1].items()
-                if key == request_id
-            )
-        except StopIteration:
-            output = None
-        output = json.loads(output)
         status_code = output.pop("status_code", 200)
         return JSONResponse(output, status_code)
