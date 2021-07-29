@@ -121,14 +121,6 @@ async def process_batch(kp_id, kp_info: KPInformation):
             f"Processing batch of size {len(msgs)} for KP {kp_id}"
         )
 
-        now = datetime.datetime.utcnow()
-
-        time_remaining_seconds = (tat - now).total_seconds()
-        # Wait for TAT
-        if time_remaining_seconds > 0:
-            LOGGER.debug(f"Waiting {time_remaining_seconds}")
-            await asyncio.sleep(time_remaining_seconds)
-
         request_value_mapping = {
             key: json.loads(value)
             for msg in msgs
@@ -235,6 +227,12 @@ async def process_batch(kp_id, kp_info: KPInformation):
         for request_id, response_value in response_values.items():
             # Write finished value to DB
             await conn.xadd(f"{kp_id}:response:{request_id}", {request_id: json.dumps(response_value)})
+
+        time_remaining_seconds = (tat - datetime.datetime.utcnow()).total_seconds()
+        # Wait for TAT
+        if time_remaining_seconds > 0:
+            LOGGER.debug(f"Waiting {time_remaining_seconds} seconds")
+            await asyncio.sleep(time_remaining_seconds)
 
         # Update TAT
         # if request_qty == 0 we don't enforce the rate limit
