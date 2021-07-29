@@ -1,8 +1,14 @@
+fastapi==0.65.2
+httpx==0.18.0
+reasoner-pydantic==1.1.2.1
+uvicorn==0.11.7
+python-dotenv==0.17.0
+aioredis==2.0.0b1
+
 asgiar==0.2.0
 fakeredis==1.4.5
 pytest==5.4.3
 pytest-asyncio==0.14.0
 pytest-cov==2.10.0
-asgi-lifespan==1.0.1
 simple-kp @ git+git://github.com/TranslatorSRI/simple-kp@v3.0.0
 aiosqlite==0.17.0
