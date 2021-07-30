@@ -15,7 +15,7 @@ import pydantic
 from reasoner_pydantic import Response as ReasonerResponse
 import uuid
 
-from .trapi import extract_curies, filter_by_curie_mapping
+from .trapi import BatchingError, extract_curies, filter_by_curie_mapping
 from .utils import get_keys_with_value
 
 LOGGER = logging.getLogger(__name__)
@@ -151,8 +151,12 @@ class ThrottledServer():
 
                 # Split using the request_curie_mapping
                 for request_id, curie_mapping in request_curie_mapping.items():
-                    message_filtered = filter_by_curie_mapping(message, curie_mapping)
-                    response_values[request_id] = {"message": message_filtered}
+                    try:
+                        message_filtered = filter_by_curie_mapping(message, curie_mapping, kp_id=self.id)
+                        response_values[request_id] = {"message": message_filtered}
+                    except BatchingError as err:
+                        # the response is probably malformed
+                        response_values[request_id] = err
             except (
                 httpx.RequestError,
                 httpx.HTTPStatusError,

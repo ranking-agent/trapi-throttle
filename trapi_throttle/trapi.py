@@ -3,6 +3,10 @@ import copy
 from reasoner_pydantic import Message, QueryGraph
 
 
+class BatchingError(Exception):
+    """Error batching TRAPI requests."""
+
+
 class UnableToMerge(BaseException):
     """ Unable to merge given query graphs """
 
@@ -51,18 +55,18 @@ def result_contains_node_bindings(
 ):
     """ Check that the result object has all bindings provided (qg_id->kg_id) """
     for qg_id, kg_ids in bindings.items():
-        for kg_id in kg_ids:
-            if not any(
-                nb["id"] == kg_id
-                for nb in result["node_bindings"][qg_id]
-            ):
-                return False
+        if not any(
+            nb["id"] in kg_ids
+            for nb in result["node_bindings"][qg_id]
+        ):
+            return False
     return True
 
 
 def filter_by_curie_mapping(
         message: Message,
-        curie_mapping: dict[str, list[str]]
+        curie_mapping: dict[str, list[str]],
+        kp_id: str = "KP",
 ) -> Message:
     """
     Filter a message to ensure that all results
@@ -72,7 +76,12 @@ def filter_by_curie_mapping(
 
     # Update query graph IDs
     for qg_id, curie_list in curie_mapping.items():
-        message["query_graph"]["nodes"][qg_id]["ids"] = curie_list
+        if message["query_graph"] is None:
+            raise BatchingError(f"qgraph not returned from {kp_id}")
+        try:
+            message["query_graph"]["nodes"][qg_id]["ids"] = curie_list
+        except KeyError:
+            raise BatchingError(f"qgraph from {kp_id} appears to be modified or malformed")
 
     # Only keep results where there is a node binding
     # that connects to our given kgraph_node_id
