@@ -9,6 +9,7 @@ import json
 from json.decoder import JSONDecodeError
 import logging
 import traceback
+from typing import Optional
 
 from fastapi import HTTPException
 import httpx
@@ -43,21 +44,21 @@ def log_errors(fcn):
     return wrapper
 
 
-class Throttle():
-    """TRAPI Throttle."""
+class ThrottledServer():
+    """Throttled server."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, id: str, info: KPInformation, *args, **kwargs):
         """Initialize."""
-        self.workers = dict()
-        self.request_queues: dict[str, asyncio.Queue] = dict()
-        self.response_queues: dict[str, asyncio.Queue] = dict()
-        self.servers = dict()
+        self.id = id
+        self.worker: Optional[Task] = None
+        self.request_queue = asyncio.Queue()
+        self.url = info.url
+        self.request_qty = info.request_qty
+        self.request_duration = info.request_duration
 
     @log_errors
     async def process_batch(
             self,
-            kp_id: str,
-            kp_info: KPInformation,
     ):
         """Set up a subscriber to process batching"""
         # Initialize the TAT
@@ -71,11 +72,9 @@ class Throttle():
         # https://dev.to/astagi/rate-limiting-using-python-and-redis-58gk
         tat = datetime.datetime.utcnow()
 
-        request_queue = self.request_queues[kp_id]
-
         while True:
             # Get everything in the stream or wait for something to show up
-            request_id, payload, response_queue = await request_queue.get()
+            request_id, payload, response_queue = await self.request_queue.get()
             request_value_mapping = {
                 request_id: payload
             }
@@ -84,14 +83,14 @@ class Throttle():
             }
             while True:
                 try:
-                    request_id, payload, response_queue = request_queue.get_nowait()
+                    request_id, payload, response_queue = self.request_queue.get_nowait()
                 except QueueEmpty:
                     break
                 request_value_mapping[request_id] = payload
                 response_queues[request_id] = response_queue
 
             LOGGER.debug(
-                f"Processing batch of size {len(request_value_mapping)} for KP {kp_id}"
+                f"Processing batch of size {len(request_value_mapping)} for KP {self.id}"
             )
 
             # Extract a curie mapping from each request
@@ -110,7 +109,7 @@ class Throttle():
             # Re-queue the un-selected requests
             for request_id in request_value_mapping:
                 if request_id not in batch_request_ids:
-                    await request_queue.put((
+                    await self.request_queue.put((
                         request_id,
                         request_value_mapping[request_id],
                         response_queues[request_id],
@@ -149,7 +148,7 @@ class Throttle():
             try:
                 # Make request
                 async with httpx.AsyncClient() as client:
-                    response = await client.post(kp_info.url, json=merged_request_value)
+                    response = await client.post(self.url, json=merged_request_value)
                 response.raise_for_status()
 
                 # Parse with reasoner_pydantic to validate
@@ -201,7 +200,7 @@ class Throttle():
                 await response_queues[request_id].put(response_value)
 
             # if request_qty == 0 we don't enforce the rate limit
-            if kp_info.request_qty > 0:
+            if self.request_qty > 0:
                 time_remaining_seconds = (tat - datetime.datetime.utcnow()).total_seconds()
 
                 # Wait for TAT
@@ -210,32 +209,24 @@ class Throttle():
                     await asyncio.sleep(time_remaining_seconds)
 
                 # Update TAT
-                interval = kp_info.request_duration / kp_info.request_qty
+                interval = self.request_duration / self.request_qty
                 tat = (datetime.datetime.utcnow() + interval)
 
-    async def register_kp(
+    async def __aenter__(
             self,
-            kp_id: str,
-            kp_info: KPInformation,
     ):
         """Set KP info and start processing task."""
-        info = json.loads(kp_info.json())
-        if kp_id in self.servers and self.servers[kp_id] != info:
-            raise HTTPException(409, f"{kp_id} already exists")
-        self.servers[kp_id] = info
-
         loop = asyncio.get_event_loop()
-        self.workers[kp_id] = loop.create_task(self.process_batch(kp_id, kp_info))
+        self.worker = loop.create_task(self.process_batch())
 
-        self.request_queues[kp_id] = asyncio.Queue()
+        return self
 
-    async def unregister_kp(
+    async def __aexit__(
             self,
-            kp_id: str,
     ):
         """Cancel KP processing task."""
-        self.servers.pop(kp_id)
-        task: Task = self.workers.pop(kp_id)
+        task: Task = self.worker
+        self.worker = None
         
         task.cancel()
 
@@ -246,18 +237,54 @@ class Throttle():
 
     async def query(
             self,
-            kp_id: str,
             query: Query,
     ) -> Query:
         """ Queue up a query for batching and return when completed """
+        if self.worker is None:
+            raise RuntimeError("Cannot send a request until a worker is running - enter the context")
+
         request_id = str(uuid.uuid1())
         response_queue = asyncio.Queue()
 
         # Queue query for processing
-        await self.request_queues[kp_id].put((request_id, query.dict(exclude_unset=True), response_queue))
+        await self.request_queue.put((request_id, query.dict(exclude_unset=True), response_queue))
 
         # Wait for response
         output = await response_queue.get()
 
         status_code = output.pop("status_code", 200)
         return JSONResponse(output, status_code)
+
+
+class Throttle():
+    """TRAPI Throttle."""
+
+    def __init__(self, *args, **kwargs):
+        """Initialize."""
+        self.servers: dict[str, ThrottledServer] = dict()
+
+    async def register_kp(
+            self,
+            kp_id: str,
+            kp_info: KPInformation,
+    ):
+        """Set KP info and start processing task."""
+        if kp_id in self.servers:
+            raise HTTPException(409, f"{kp_id} already exists")
+        self.servers[kp_id] = ThrottledServer(kp_id, kp_info)
+        await self.servers[kp_id].__aenter__()
+
+    async def unregister_kp(
+            self,
+            kp_id: str,
+    ):
+        """Cancel KP processing task."""
+        await self.servers.pop(kp_id).__aexit__()
+
+    async def query(
+            self,
+            kp_id: str,
+            query: Query,
+    ) -> Query:
+        """ Queue up a query for batching and return when completed """
+        return await self.servers[kp_id].query(query)
