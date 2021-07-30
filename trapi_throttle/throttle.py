@@ -44,14 +44,14 @@ def log_errors(fcn):
 class ThrottledServer():
     """Throttled server."""
 
-    def __init__(self, id: str, info: dict, *args, **kwargs):
+    def __init__(self, id: str, url: str, request_qty: int, request_duration: float, *args, **kwargs):
         """Initialize."""
         self.id = id
         self.worker: Optional[Task] = None
         self.request_queue = asyncio.Queue()
-        self.url = info["url"]
-        self.request_qty = info["request_qty"]
-        self.request_duration = datetime.timedelta(seconds=info["request_duration"])
+        self.url = url
+        self.request_qty = request_qty
+        self.request_duration = datetime.timedelta(seconds=request_duration)
 
     @log_errors
     async def process_batch(
@@ -248,7 +248,7 @@ class Throttle():
         """Set KP info and start processing task."""
         if kp_id in self.servers:
             raise DuplicateError(f"{kp_id} already exists")
-        self.servers[kp_id] = ThrottledServer(kp_id, kp_info)
+        self.servers[kp_id] = ThrottledServer(kp_id, **kp_info)
         await self.servers[kp_id].__aenter__()
 
     async def unregister_kp(

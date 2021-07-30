@@ -58,7 +58,7 @@ async def test_batch():
         qgs.append(qg)
 
     # Submit queries
-    async with ThrottledServer("kp1", kp_info) as server:
+    async with ThrottledServer("kp1", **kp_info) as server:
         msgs = await asyncio.wait_for(
             asyncio.gather(
                 *(
