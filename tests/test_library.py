@@ -93,3 +93,70 @@ async def test_batch():
             },
             msg
         )
+
+
+@pytest.mark.asyncio
+@with_kp_overlay(
+    "http://kp1/query",
+    kp_data="""
+        MONDO:0005148(( category biolink:Disease ))
+        CHEBI:6801(( category biolink:ChemicalSubstance ))
+        CHEBI:6801-- predicate biolink:treats -->MONDO:0005148
+        CHEBI:6802(( category biolink:ChemicalSubstance ))
+        CHEBI:6802-- predicate biolink:treats -->MONDO:0005148
+        CHEBI:6803(( category biolink:ChemicalSubstance ))
+        CHEBI:6803-- predicate biolink:treats -->MONDO:0005148
+        """,
+    request_qty=1,
+    request_duration=datetime.timedelta(seconds=1)
+)
+async def test_429():
+    """Test that we catch 429s correctly."""
+    kp_info = {
+        "url": "http://kp1/query",
+        "request_qty": 1,
+        "request_duration": 0.75,
+    }
+
+    qgs = [
+        {
+            "nodes": {
+                "n0": {"ids": ["CHEBI:6801"]},
+                "n1": {"categories": ["biolink:Disease"]},
+            },
+            "edges": {
+                "n0n1": {
+                    "subject": "n0",
+                    "object": "n1",
+                    "predicates": ["biolink:related_to"],
+                }
+            },
+        },
+        {
+            "nodes": {
+                "n0": {"ids": ["CHEBI:6802"]},
+                "n1": {"categories": ["biolink:Gene"]},
+            },
+            "edges": {
+                "n0n1": {
+                    "subject": "n0",
+                    "object": "n1",
+                    "predicates": ["biolink:related_to"],
+                }
+            },
+        },
+    ]
+
+    async with ThrottledServer("kp1", **kp_info) as server:
+        # Submit queries
+        results = await asyncio.wait_for(
+            asyncio.gather(
+                *(
+                    server.query(
+                        {"message": {"query_graph": qg}}
+                    )
+                    for qg in qgs
+                )
+            ),
+            timeout=20,
+        )
