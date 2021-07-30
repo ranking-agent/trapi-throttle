@@ -193,6 +193,7 @@ class ThrottledServer():
 
     async def __aexit__(
             self,
+            *args,
     ):
         """Cancel KP processing task."""
         task: Task = self.worker
