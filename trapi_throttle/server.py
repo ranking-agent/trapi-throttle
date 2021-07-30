@@ -57,7 +57,7 @@ async def shutdown_event():
 class KPInformation(pydantic.main.BaseModel):
     url: pydantic.AnyHttpUrl
     request_qty: int
-    request_duration: datetime.timedelta
+    request_duration: float
 
 
 def log_errors(fcn):
@@ -78,7 +78,7 @@ async def register_kp(
 ):
     """Set KP info and start processing task."""
     try:
-        await APP.throttle.register_kp(kp_id, kp_info)
+        await APP.throttle.register_kp(kp_id, kp_info.dict(exclude_unset=True))
     except DuplicateError as err:
         raise HTTPException(409, str(err))
 
@@ -102,7 +102,7 @@ async def query(
 ) -> Query:
     """ Queue up a query for batching and return when completed """
     try:
-        return JSONResponse(await APP.throttle.query(kp_id, query))
+        return JSONResponse(await APP.throttle.query(kp_id, query.dict(exclude_unset=True)))
     except httpx.RequestError as e:
         return JSONResponse({
             "message": "Request Error contacting KP",

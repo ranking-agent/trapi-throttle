@@ -8,11 +8,11 @@ from functools import wraps
 from json.decoder import JSONDecodeError
 import logging
 import traceback
-from typing import Optional
+from typing import Optional, Union
 
 import httpx
 import pydantic
-from reasoner_pydantic import Query, Response as ReasonerResponse
+from reasoner_pydantic import Response as ReasonerResponse
 import uuid
 import uvloop
 
@@ -44,14 +44,14 @@ def log_errors(fcn):
 class ThrottledServer():
     """Throttled server."""
 
-    def __init__(self, id: str, info: KPInformation, *args, **kwargs):
+    def __init__(self, id: str, info: dict, *args, **kwargs):
         """Initialize."""
         self.id = id
         self.worker: Optional[Task] = None
         self.request_queue = asyncio.Queue()
-        self.url = info.url
-        self.request_qty = info.request_qty
-        self.request_duration = info.request_duration
+        self.url = info["url"]
+        self.request_qty = info["request_qty"]
+        self.request_duration = datetime.timedelta(seconds=info["request_duration"])
 
     @log_errors
     async def process_batch(
@@ -208,8 +208,8 @@ class ThrottledServer():
 
     async def query(
             self,
-            query: Query,
-    ) -> Query:
+            query: dict,
+    ) -> dict:
         """ Queue up a query for batching and return when completed """
         if self.worker is None:
             raise RuntimeError("Cannot send a request until a worker is running - enter the context")
@@ -218,10 +218,10 @@ class ThrottledServer():
         response_queue = asyncio.Queue()
 
         # Queue query for processing
-        await self.request_queue.put((request_id, query.dict(exclude_unset=True), response_queue))
+        await self.request_queue.put((request_id, query, response_queue))
 
         # Wait for response
-        output = await response_queue.get()
+        output: Union[dict, Exception] = await response_queue.get()
 
         if isinstance(output, Exception):
             raise output
@@ -243,7 +243,7 @@ class Throttle():
     async def register_kp(
             self,
             kp_id: str,
-            kp_info: KPInformation,
+            kp_info: dict,
     ):
         """Set KP info and start processing task."""
         if kp_id in self.servers:
@@ -261,7 +261,7 @@ class Throttle():
     async def query(
             self,
             kp_id: str,
-            query: Query,
-    ) -> Query:
+            query: dict,
+    ) -> dict:
         """ Queue up a query for batching and return when completed """
         return await self.servers[kp_id].query(query)

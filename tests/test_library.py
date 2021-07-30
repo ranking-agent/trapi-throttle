@@ -29,11 +29,11 @@ async def test_batch():
     """ Test that we correctly batch 3 queries into 1 """
 
     # Register kp
-    kp_info = KPInformation(**{
+    kp_info = {
         "url": "http://kp1/query",
         "request_qty": 1,
         "request_duration": 1,
-    })
+    }
 
     qg_template = {
         "nodes": {
@@ -63,7 +63,7 @@ async def test_batch():
             asyncio.gather(
                 *(
                     server.query(
-                        Query(**{"message": {"query_graph": qg}})
+                        {"message": {"query_graph": qg}}
                     )
                     for qg in qgs
                 )
