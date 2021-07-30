@@ -14,13 +14,10 @@ import httpx
 import pydantic
 from reasoner_pydantic import Query
 from starlette.responses import JSONResponse
-import uvloop
 
 from .config import settings
 from .throttle import DuplicateError, Throttle
 from .utils import log_request, log_response
-
-asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 LOGGER = logging.getLogger(__name__)
 
