@@ -15,7 +15,7 @@ import pydantic
 from reasoner_pydantic import Response as ReasonerResponse
 import uuid
 
-from .trapi import BatchingError, extract_curies, filter_by_curie_mapping
+from .trapi import BatchingError, get_curies, remove_curies, filter_by_curie_mapping
 from .utils import get_keys_with_value
 
 LOGGER = logging.getLogger(__name__)
@@ -89,16 +89,23 @@ class ThrottledServer():
 
             # Extract a curie mapping from each request
             request_curie_mapping = {
-                request_id: extract_curies(request_value["message"]["query_graph"])
+                request_id: get_curies(request_value["message"]["query_graph"])
                 for request_id, request_value in request_value_mapping.items()
             }
 
             # Find requests that are the same (those that we can merge)
             # This disregards non-matching IDs because the IDs have been
             # removed with the extract_curie method
-            first_value = next(iter(request_value_mapping.values()))
+            stripped_qgraphs = {
+                request_id: remove_curies(request["message"]["query_graph"])
+                for request_id, request in request_value_mapping.items()
+            }
+            first_value = next(iter(stripped_qgraphs.values()))
+
             batch_request_ids = get_keys_with_value(
-                request_value_mapping, first_value)
+                stripped_qgraphs,
+                first_value,
+            )
             
             # Re-queue the un-selected requests
             for request_id in request_value_mapping:

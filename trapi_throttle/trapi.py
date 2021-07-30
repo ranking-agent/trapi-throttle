@@ -11,7 +11,7 @@ class UnableToMerge(BaseException):
     """ Unable to merge given query graphs """
 
 
-def extract_curies(qgraph: QueryGraph) -> dict[str, list[str]]:
+def get_curies(qgraph: QueryGraph) -> dict[str, list[str]]:
     """
     Pull curies from query graph and
     return them as a mapping of node_id -> curie_list
@@ -21,6 +21,16 @@ def extract_curies(qgraph: QueryGraph) -> dict[str, list[str]]:
         for node_id, node in qgraph["nodes"].items()
         if (curies := node.get("ids", None)) is not None
     }
+
+
+def remove_curies(qgraph: QueryGraph) -> dict[str, list[str]]:
+    """
+    Remove curies from query graph.
+    """
+    qgraph = copy.deepcopy(qgraph)
+    for node in qgraph["nodes"].values():
+        node.pop("ids", None)
+    return qgraph
 
 
 def remove_unbound_from_kg(message):
