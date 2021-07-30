@@ -13,3 +13,4 @@ logs/*
 .env
 *.log
 data/
+.python-version
