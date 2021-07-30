@@ -14,12 +14,9 @@ import httpx
 import pydantic
 from reasoner_pydantic import Response as ReasonerResponse
 import uuid
-import uvloop
 
 from .trapi import extract_curies, filter_by_curie_mapping
 from .utils import get_keys_with_value
-
-asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 LOGGER = logging.getLogger(__name__)
 
