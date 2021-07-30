@@ -294,6 +294,9 @@ async def test_metakg(client):
     response = await client.get("/kp1/meta_knowledge_graph")
     assert response.status_code == 200
 
+    response = await client.get("/unregister/kp1")
+    assert response.status_code == 200
+
 
 @pytest.mark.asyncio
 async def test_duplicate(client):
@@ -316,6 +319,9 @@ async def test_duplicate(client):
     }
     response = await client.post("/register/kp1", json=kp_info)
     assert response.status_code == 409
+
+    response = await client.get("/unregister/kp1")
+    assert response.status_code == 200
 
 
 @with_kp_overlay(
@@ -380,6 +386,9 @@ async def test_no_rate_limit(client):
 
     assert (start_time - end_time).total_seconds() < 0.1
 
+    response = await client.get("/unregister/kp1")
+    assert response.status_code == 200
+
 
 @pytest.mark.asyncio
 @with_response_overlay(
@@ -428,6 +437,9 @@ async def test_kp_500(client):
         r = r.json()
         assert r["response"]["data"] == "Internal server error"
 
+    response = await client.get("/unregister/kp1")
+    assert response.status_code == 200
+
 
 @pytest.mark.asyncio
 async def test_kp_unreachable(client):
@@ -469,3 +481,6 @@ async def test_kp_unreachable(client):
         r = r.json()
         # Check that we add a message
         assert r["message"] == "Request Error contacting KP"
+
+    response = await client.get("/unregister/kp1")
+    assert response.status_code == 200
