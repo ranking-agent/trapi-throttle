@@ -10,7 +10,6 @@ from json.decoder import JSONDecodeError
 import logging
 import traceback
 
-import aioredis
 from fastapi import HTTPException
 import httpx
 import pydantic
@@ -19,7 +18,6 @@ from starlette.responses import JSONResponse
 import uuid
 import uvloop
 
-from .storage import RedisStream
 from .trapi import extract_curies, filter_by_curie_mapping
 from .utils import get_keys_with_value, log_request, log_response
 

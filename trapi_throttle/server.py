@@ -42,7 +42,7 @@ async def startup_event():
         settings.dict()
     )
     LOGGER.info(f" App Configuration:\n {pretty_config}")
-    APP.throttle = Throttle(redis_url=settings.redis_url)
+    APP.throttle = Throttle()
 
 
 @APP.on_event('shutdown')
