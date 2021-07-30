@@ -143,6 +143,20 @@ class ThrottledServer():
                 # Make request
                 async with httpx.AsyncClient() as client:
                     response = await client.post(self.url, json=merged_request_value)
+                if response.status_code == 429:
+                    # reset TAT
+                    interval = self.request_duration / self.request_qty
+                    tat = (datetime.datetime.utcnow() + interval)
+                    # re-queue requests
+                    for request_id in request_value_mapping:
+                        await self.request_queue.put((
+                            request_id,
+                            request_value_mapping[request_id],
+                            response_queues[request_id],
+                        ))
+                    # try again later
+                    continue
+
                 response.raise_for_status()
 
                 # Parse with reasoner_pydantic to validate
