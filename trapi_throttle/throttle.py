@@ -5,22 +5,19 @@ from asyncio.tasks import Task
 import copy
 import datetime
 from functools import wraps
-import json
 from json.decoder import JSONDecodeError
 import logging
 import traceback
 from typing import Optional
 
-from fastapi import HTTPException
 import httpx
 import pydantic
 from reasoner_pydantic import Query, Response as ReasonerResponse
-from starlette.responses import JSONResponse
 import uuid
 import uvloop
 
 from .trapi import extract_curies, filter_by_curie_mapping
-from .utils import get_keys_with_value, log_request, log_response
+from .utils import get_keys_with_value
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -159,41 +156,14 @@ class ThrottledServer():
                 for request_id, curie_mapping in request_curie_mapping.items():
                     message_filtered = filter_by_curie_mapping(message, curie_mapping)
                     response_values[request_id] = {"message": message_filtered}
-            except httpx.RequestError as e:
+            except (
+                httpx.RequestError,
+                httpx.HTTPStatusError,
+                JSONDecodeError,
+                pydantic.ValidationError,
+            ) as e:
                 for request_id, curie_mapping in request_curie_mapping.items():
-                    response_values[request_id] = {
-                        "message": "Request Error contacting KP",
-                        "error": str(e),
-                        "request": log_request(e.request),
-                        "status_code" : 502,
-                    }
-            except httpx.HTTPStatusError as e:
-                for request_id, curie_mapping in request_curie_mapping.items():
-                    response_values[request_id] = {
-                        "message": "Response Error contacting KP",
-                        "error": str(e),
-                        "request": log_request(e.request),
-                        "response": log_response(e.response),
-                        "status_code": e.response.status_code,
-                    }
-            except JSONDecodeError as e:
-                for request_id, curie_mapping in request_curie_mapping.items():
-                    response_values[request_id] = {
-                        "message": "Received bad JSON data from KP",
-                        "request": log_request(e.request),
-                        "response": log_response(e.response),
-                        "error": str(e),
-                        "status_code": 502,
-                    }
-            except pydantic.ValidationError as e:
-                for request_id, curie_mapping in request_curie_mapping.items():
-                    response_values[request_id] = {
-                        "message": "Received non-TRAPI compliant response from KP",
-                        "request": log_request(e.request),
-                        "response": log_response(e.response),
-                        "error": str(e),
-                        "status_code" : 502,
-                    }
+                    response_values[request_id] = e
 
             for request_id, response_value in response_values.items():
                 # Write finished value to DB
@@ -252,8 +222,14 @@ class ThrottledServer():
         # Wait for response
         output = await response_queue.get()
 
-        status_code = output.pop("status_code", 200)
-        return JSONResponse(output, status_code)
+        if isinstance(output, Exception):
+            raise output
+
+        return output
+
+    
+class DuplicateError(Exception):
+    """Duplicate KP."""
 
 
 class Throttle():
@@ -270,7 +246,7 @@ class Throttle():
     ):
         """Set KP info and start processing task."""
         if kp_id in self.servers:
-            raise HTTPException(409, f"{kp_id} already exists")
+            raise DuplicateError(f"{kp_id} already exists")
         self.servers[kp_id] = ThrottledServer(kp_id, kp_info)
         await self.servers[kp_id].__aenter__()
 
