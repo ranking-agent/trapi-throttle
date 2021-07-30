@@ -64,7 +64,9 @@ class ThrottledServer():
         # This is an implementation of the GCRA algorithm
         # More information can be found here:
         # https://dev.to/astagi/rate-limiting-using-python-and-redis-58gk
-        tat = datetime.datetime.utcnow()
+        if self.request_qty > 0:
+            interval = self.request_duration / self.request_qty
+            tat = datetime.datetime.utcnow() + interval
 
         while True:
             # Get everything in the stream or wait for something to show up
@@ -201,8 +203,7 @@ class ThrottledServer():
                     await asyncio.sleep(time_remaining_seconds)
 
                 # Update TAT
-                interval = self.request_duration / self.request_qty
-                tat = (datetime.datetime.utcnow() + interval)
+                tat = datetime.datetime.utcnow() + interval
 
     async def __aenter__(
             self,
