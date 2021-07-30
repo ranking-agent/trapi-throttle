@@ -3,4 +3,3 @@ httpx==0.16.1
 reasoner-pydantic==1.1.2.1
 uvicorn==0.11.7
 python-dotenv==0.17.0
-aioredis==2.0.0b1

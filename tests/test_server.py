@@ -3,7 +3,6 @@ import asyncio
 import copy
 import datetime
 
-import aioredis
 import reasoner_pydantic
 from starlette.responses import Response
 import pytest
@@ -22,14 +21,6 @@ async def client():
         await shutdown_event()
 
 
-@pytest.fixture
-async def clear_redis():
-    r = await aioredis.Redis.from_url(settings.redis_url)
-    await r.flushdb()
-    await r.close()
-    yield
-
-
 @pytest.mark.asyncio
 @with_kp_overlay(
     "http://kp1/query",
@@ -45,7 +36,7 @@ async def clear_redis():
     request_qty=3,
     request_duration=datetime.timedelta(seconds=1)
 )
-async def test_batch(client, clear_redis):
+async def test_batch(client):
     """ Test that we correctly batch 3 queries into 1 """
 
     # Register kp
@@ -142,7 +133,7 @@ async def test_batch(client, clear_redis):
     request_qty=3,
     request_duration=datetime.timedelta(seconds=1)
 )
-async def test_mixed_batching(client, clear_redis):
+async def test_mixed_batching(client):
     """ Test that we handle a mixed of identical and differing queries """
 
     # Register kp
@@ -287,7 +278,7 @@ async def test_mixed_batching(client, clear_redis):
     request_duration=datetime.timedelta(seconds=1)
 )
 @pytest.mark.asyncio
-async def test_metakg(client, clear_redis):
+async def test_metakg(client):
     """Test /metakg."""
 
     # Register kp
@@ -305,7 +296,7 @@ async def test_metakg(client, clear_redis):
 
 
 @pytest.mark.asyncio
-async def test_duplicate(client, clear_redis):
+async def test_duplicate(client):
     """ Test that we correctly batch 3 queries into 1 """
 
     # Register kp
@@ -338,7 +329,7 @@ async def test_duplicate(client, clear_redis):
     request_duration=datetime.timedelta(seconds=1)
 )
 @pytest.mark.asyncio
-async def test_no_rate_limit(client, clear_redis):
+async def test_no_rate_limit(client):
     """ Test that registration with request_qty = 0 enforces no rate limit """
 
     # Register kp
@@ -397,7 +388,7 @@ async def test_no_rate_limit(client, clear_redis):
     request_qty=5,
     request_duration=datetime.timedelta(seconds=1)
 )
-async def test_kp_500(client, clear_redis):
+async def test_kp_500(client):
     """ Test that we return errors if the KP fails to respond """
 
     # Register kp
@@ -439,7 +430,7 @@ async def test_kp_500(client, clear_redis):
 
 
 @pytest.mark.asyncio
-async def test_kp_unreachable(client, clear_redis):
+async def test_kp_unreachable(client):
     """ Test that we return errors if the KP is not reachable """
 
     # Register kp
