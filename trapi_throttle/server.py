@@ -2,19 +2,23 @@
 import asyncio
 import datetime
 from functools import wraps
+from json.decoder import JSONDecodeError
 import logging
 import traceback
 import pprint
-from trapi_throttle.throttle import Throttle
 
 from fastapi import FastAPI
+from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import pydantic
 from reasoner_pydantic import Query
+from starlette.responses import JSONResponse
 import uvloop
 
 from .config import settings
+from .throttle import DuplicateError, Throttle
+from .utils import log_request, log_response
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -73,7 +77,10 @@ async def register_kp(
         kp_info: KPInformation,
 ):
     """Set KP info and start processing task."""
-    await APP.throttle.register_kp(kp_id, kp_info)
+    try:
+        await APP.throttle.register_kp(kp_id, kp_info)
+    except DuplicateError as err:
+        raise HTTPException(409, str(err))
 
     return {"status": "created"}
 
@@ -94,7 +101,35 @@ async def query(
         query: Query,
 ) -> Query:
     """ Queue up a query for batching and return when completed """
-    return await APP.throttle.query(kp_id, query)
+    try:
+        return JSONResponse(await APP.throttle.query(kp_id, query))
+    except httpx.RequestError as e:
+        return JSONResponse({
+            "message": "Request Error contacting KP",
+            "request": log_request(e.request),
+            "error": str(e),
+        }, 502)
+    except httpx.HTTPStatusError as e:
+        return JSONResponse({
+            "message": "Response Error contacting KP",
+            "request": log_request(e.request),
+            "response": log_response(e.response),
+            "error": str(e),
+        }, e.response.status_code)
+    except JSONDecodeError as e:
+        return JSONResponse({
+            "message": "Received bad JSON data from KP",
+            "request": log_request(e.request),
+            "response": log_response(e.response),
+            "error": str(e),
+        }, 502)
+    except pydantic.ValidationError as e:
+        return JSONResponse({
+            "message": "Received non-TRAPI compliant response from KP",
+            "request": log_request(e.request),
+            "response": log_response(e.response),
+            "error": str(e),
+        }, 502)
 
 
 @APP.get("/{kp_id}/meta_knowledge_graph")
