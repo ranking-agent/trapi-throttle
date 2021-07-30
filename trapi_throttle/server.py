@@ -99,7 +99,7 @@ async def query(
 
 @APP.get("/{kp_id}/meta_knowledge_graph")
 async def metakg(kp_id: str):
-    url = "/".join(APP.throttle.servers[kp_id]["url"].split("/")[:-1] + ["meta_knowledge_graph"])
+    url = "/".join(APP.throttle.servers[kp_id].url.split("/")[:-1] + ["meta_knowledge_graph"])
     async with httpx.AsyncClient() as client:
         response = await client.get(url)
     return response.json()
