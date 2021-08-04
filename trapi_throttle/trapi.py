@@ -98,7 +98,7 @@ def filter_by_curie_mapping(
     # Only keep results where there is a node binding
     # that connects to our given kgraph_node_id
     message["results"] = [
-        result for result in message["results"]
+        result for result in (message["results"] or [])
         if result_contains_node_bindings(result, curie_mapping)
     ]
 
