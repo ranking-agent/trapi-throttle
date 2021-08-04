@@ -278,6 +278,35 @@ QG = {
     response={"message": {
         "knowledge_graph": {"nodes": {}, "edges": {}},
         "query_graph": QG,
+        "results": [],
+    }},
+    request_qty=5,
+    request_duration=datetime.timedelta(seconds=1),
+    delay=2.0,
+)
+async def test_slow():
+    """Test that we handle KP responses with missing results."""
+    kp_info = {
+        "url": "http://kp1/query",
+        "request_qty": 1,
+        "request_duration": 0.75,
+    }
+
+    with pytest.raises(asyncio.exceptions.TimeoutError):
+        async with ThrottledServer("kp1", **kp_info) as server:
+            # Submit queries
+            result = await server.query(
+                {"message": {"query_graph": QG}},
+                timeout=1.0,
+            )
+
+
+@pytest.mark.asyncio
+@with_response_overlay(
+    "http://kp1/query",
+    response={"message": {
+        "knowledge_graph": {"nodes": {}, "edges": {}},
+        "query_graph": QG,
         "results": None,
     }},
     request_qty=5,
@@ -297,3 +326,73 @@ async def test_no_results():
             {"message": {"query_graph": QG}}
         )
     assert result["message"]["results"] == []
+
+
+@pytest.mark.asyncio
+@with_kp_overlay(
+    "http://kp1/query",
+    kp_data="""
+        CHEBI:6801(( category biolink:ChemicalSubstance ))
+        CHEBI:6802(( category biolink:ChemicalSubstance ))
+        MONDO:0005148(( category biolink:Disease ))
+        MONDO:0005149(( category biolink:Disease ))
+        CHEBI:6801-- predicate biolink:treats -->MONDO:0005148
+        CHEBI:6802-- predicate biolink:treats -->MONDO:0005148
+        """,
+    request_qty=3,
+    request_duration=datetime.timedelta(seconds=1)
+)
+async def test_double_pinned():
+    """Test that we correctly handle qedges with both ends pinned."""
+
+    # Register kp
+    kp_info = {
+        "url": "http://kp1/query",
+        "request_qty": 1,
+        "request_duration": 1,
+    }
+
+    qgs = [
+        {
+            "nodes": {
+                "n0": {"ids": ["CHEBI:6801"]},
+                "n1": {"ids": ["MONDO:0005148"]},
+            },
+            "edges": {
+                "n0n1": {
+                    "subject": "n0",
+                    "object": "n1",
+                    "predicates": ["biolink:treats"],
+                }
+            },
+        },
+        {
+            "nodes": {
+                "n0": {"ids": ["CHEBI:6802"]},
+                "n1": {"ids": ["MONDO:0005149"]},
+            },
+            "edges": {
+                "n0n1": {
+                    "subject": "n0",
+                    "object": "n1",
+                    "predicates": ["biolink:treats"],
+                }
+            },
+        }
+    ]
+
+    # Submit queries
+    async with ThrottledServer("kp1", **kp_info) as server:
+        msgs = await asyncio.wait_for(
+            asyncio.gather(
+                *(
+                    server.query(
+                        {"message": {"query_graph": qg}}
+                    )
+                    for qg in qgs
+                )
+            ),
+            timeout=20,
+        )
+        
+    print(msgs)
