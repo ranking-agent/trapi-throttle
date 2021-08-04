@@ -2,11 +2,12 @@
 import asyncio
 import copy
 import datetime
+from trapi_throttle.trapi import BatchingError
 
 from reasoner_pydantic.message import Query
 import pytest
 
-from .utils import validate_message, with_kp_overlay
+from .utils import validate_message, with_kp_overlay, with_response_overlay
 from trapi_throttle.throttle import KPInformation, ThrottledServer
 
 
@@ -160,3 +161,97 @@ async def test_429():
             ),
             timeout=20,
         )
+
+
+@pytest.mark.asyncio
+@with_response_overlay(
+    "http://kp1/query",
+    response={"message": {"knowledge_graph": {"nodes": {}, "edges": {}}, "query_graph": None}},
+    request_qty=5,
+    request_duration=datetime.timedelta(seconds=1)
+)
+async def test_no_qg():
+    """Test that we handle KP responses with missing qgraph."""
+    kp_info = {
+        "url": "http://kp1/query",
+        "request_qty": 1,
+        "request_duration": 0.75,
+    }
+
+    qgs = [
+        {
+            "nodes": {
+                "n0": {"ids": ["CHEBI:6801"]},
+                "n1": {"categories": ["biolink:Disease"]},
+            },
+            "edges": {
+                "n0n1": {
+                    "subject": "n0",
+                    "object": "n1",
+                    "predicates": ["biolink:related_to"],
+                }
+            },
+        },
+    ]
+
+    with pytest.raises(BatchingError, match=r"qgraph not returned"):
+        async with ThrottledServer("kp1", **kp_info) as server:
+            # Submit queries
+            results = await asyncio.wait_for(
+                asyncio.gather(
+                    *(
+                        server.query(
+                            {"message": {"query_graph": qg}}
+                        )
+                        for qg in qgs
+                    )
+                ),
+                timeout=20,
+            )
+
+
+@pytest.mark.asyncio
+@with_response_overlay(
+    "http://kp1/query",
+    response={"message": {"knowledge_graph": None, "query_graph": {"nodes": {}, "edges": {}}}},
+    request_qty=5,
+    request_duration=datetime.timedelta(seconds=1)
+)
+async def test_no_kg():
+    """Test that we handle KP responses with missing kgraph."""
+    kp_info = {
+        "url": "http://kp1/query",
+        "request_qty": 1,
+        "request_duration": 0.75,
+    }
+
+    qgs = [
+        {
+            "nodes": {
+                "n0": {"ids": ["CHEBI:6801"]},
+                "n1": {"categories": ["biolink:Disease"]},
+            },
+            "edges": {
+                "n0n1": {
+                    "subject": "n0",
+                    "object": "n1",
+                    "predicates": ["biolink:related_to"],
+                }
+            },
+        },
+    ]
+
+    with pytest.raises(BatchingError, match=r"kgraph not returned"):
+        async with ThrottledServer("kp1", **kp_info) as server:
+            # Submit queries
+            results = await asyncio.wait_for(
+                asyncio.gather(
+                    *(
+                        server.query(
+                            {"message": {"query_graph": qg}}
+                        )
+                        for qg in qgs
+                    )
+                ),
+                timeout=20,
+            )
