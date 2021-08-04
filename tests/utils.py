@@ -1,3 +1,4 @@
+import asyncio
 from collections import defaultdict
 from contextlib import asynccontextmanager, AsyncExitStack
 from urllib.parse import urlparse
@@ -61,7 +62,8 @@ async def response_overlay(
         url,
         response: Response,
         request_qty: int,
-        request_duration: datetime.timedelta
+        request_duration: datetime.timedelta,
+        delay: float = 0.0,
 ):
     """
     Create a router that returns the specified
@@ -74,6 +76,7 @@ async def response_overlay(
         # pylint: disable=unused-variable disable=unused-argument
         @app.api_route('/{path:path}', methods=["GET", "POST", "PUT", "DELETE"])
         async def all_paths(path):
+            await asyncio.sleep(delay)
             return response
 
         app.add_middleware(
