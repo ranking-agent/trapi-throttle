@@ -41,7 +41,16 @@ def log_errors(fcn):
 class ThrottledServer():
     """Throttled server."""
 
-    def __init__(self, id: str, url: str, request_qty: int, request_duration: float, *args, **kwargs):
+    def __init__(
+        self,
+        id: str,
+        url: str,
+        request_qty: int,
+        request_duration: float,
+        *args, 
+        timeout: float = 60.0,
+        **kwargs,
+    ):
         """Initialize."""
         self.id = id
         self.worker: Optional[Task] = None
@@ -49,6 +58,7 @@ class ThrottledServer():
         self.url = url
         self.request_qty = request_qty
         self.request_duration = datetime.timedelta(seconds=request_duration)
+        self.timeout = timeout
 
     @log_errors
     async def process_batch(
@@ -151,7 +161,11 @@ class ThrottledServer():
             try:
                 # Make request
                 async with httpx.AsyncClient() as client:
-                    response = await client.post(self.url, json=merged_request_value)
+                    response = await client.post(
+                        self.url,
+                        json=merged_request_value,
+                        timeout=self.timeout,
+                    )
                 if response.status_code == 429:
                     # reset TAT
                     interval = self.request_duration / self.request_qty
@@ -181,6 +195,7 @@ class ThrottledServer():
                         # the response is probably malformed
                         response_values[request_id] = err
             except (
+                asyncio.exceptions.TimeoutError,
                 httpx.RequestError,
                 httpx.HTTPStatusError,
                 JSONDecodeError,
