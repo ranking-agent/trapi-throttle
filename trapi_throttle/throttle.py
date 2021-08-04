@@ -232,6 +232,7 @@ class ThrottledServer():
     async def query(
             self,
             query: dict,
+            timeout: float = 60.0,
     ) -> dict:
         """ Queue up a query for batching and return when completed """
         if self.worker is None:
@@ -244,7 +245,10 @@ class ThrottledServer():
         await self.request_queue.put((request_id, query, response_queue))
 
         # Wait for response
-        output: Union[dict, Exception] = await response_queue.get()
+        output: Union[dict, Exception] = await asyncio.wait_for(
+            response_queue.get(),
+            timeout=timeout,
+        )
 
         if isinstance(output, Exception):
             raise output
