@@ -4,7 +4,7 @@ reasoner-pydantic==1.1.2.1
 uvicorn==0.11.7
 python-dotenv==0.17.0
 
-asgiar==0.2.0
+asgiar==0.2.1
 pytest==5.4.3
 pytest-asyncio==0.14.0
 pytest-cov==2.10.0
