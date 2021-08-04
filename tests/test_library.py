@@ -307,6 +307,38 @@ async def test_slow():
     response={"message": {
         "knowledge_graph": {"nodes": {}, "edges": {}},
         "query_graph": QG,
+        "results": [],
+    }},
+    request_qty=5,
+    request_duration=datetime.timedelta(seconds=1),
+    delay=10.0,
+)
+async def test_batched_timeout():
+    """Test KP/batched-level timeout."""
+    kp_info = {
+        "url": "http://kp1/query",
+        "request_qty": 1,
+        "request_duration": 0.75,
+    }
+
+    with pytest.raises(asyncio.exceptions.TimeoutError):
+        async with ThrottledServer(
+            "kp1",
+            **kp_info,
+            timeout=1.0,
+        ) as server:
+            await server.query(
+                {"message": {"query_graph": QG}},
+                timeout=None,
+            )
+
+
+@pytest.mark.asyncio
+@with_response_overlay(
+    "http://kp1/query",
+    response={"message": {
+        "knowledge_graph": {"nodes": {}, "edges": {}},
+        "query_graph": QG,
         "results": None,
     }},
     request_qty=5,
