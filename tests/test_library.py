@@ -255,3 +255,45 @@ async def test_no_kg():
                 ),
                 timeout=20,
             )
+
+
+QG = {
+    "nodes": {
+        "n0": {"ids": ["CHEBI:6801"]},
+        "n1": {"categories": ["biolink:Disease"]},
+    },
+    "edges": {
+        "n0n1": {
+            "subject": "n0",
+            "object": "n1",
+            "predicates": ["biolink:related_to"],
+        }
+    },
+}
+
+
+@pytest.mark.asyncio
+@with_response_overlay(
+    "http://kp1/query",
+    response={"message": {
+        "knowledge_graph": {"nodes": {}, "edges": {}},
+        "query_graph": QG,
+        "results": None,
+    }},
+    request_qty=5,
+    request_duration=datetime.timedelta(seconds=1)
+)
+async def test_no_results():
+    """Test that we handle KP responses with missing results."""
+    kp_info = {
+        "url": "http://kp1/query",
+        "request_qty": 1,
+        "request_duration": 0.75,
+    }
+
+    async with ThrottledServer("kp1", **kp_info) as server:
+        # Submit queries
+        result = await server.query(
+            {"message": {"query_graph": QG}}
+        )
+    assert result["message"]["results"] == []
