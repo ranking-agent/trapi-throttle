@@ -247,7 +247,7 @@ class ThrottledServer():
     async def query(
             self,
             query: dict,
-            timeout: float = 60.0,
+            timeout: Optional[float] = 60.0,
     ) -> dict:
         """ Queue up a query for batching and return when completed """
         if self.worker is None:
