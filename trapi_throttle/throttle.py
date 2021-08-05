@@ -48,6 +48,7 @@ class ThrottledServer():
         request_qty: int,
         request_duration: float,
         *args, 
+        max_batch_size: Optional[int] = None,
         timeout: float = 60.0,
         **kwargs,
     ):
@@ -59,6 +60,7 @@ class ThrottledServer():
         self.request_qty = request_qty
         self.request_duration = datetime.timedelta(seconds=request_duration)
         self.timeout = timeout
+        self.max_batch_size = max_batch_size
 
     @log_errors
     async def process_batch(
@@ -88,6 +90,8 @@ class ThrottledServer():
                 request_id: response_queue
             }
             while True:
+                if self.max_batch_size is not None and len(request_value_mapping) == self.max_batch_size:
+                    break
                 try:
                     request_id, payload, response_queue = self.request_queue.get_nowait()
                 except QueueEmpty:
