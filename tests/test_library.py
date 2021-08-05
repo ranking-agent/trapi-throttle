@@ -2,6 +2,8 @@
 import asyncio
 import copy
 import datetime
+import time
+
 from trapi_throttle.trapi import BatchingError
 
 from reasoner_pydantic.message import Query
@@ -428,3 +430,80 @@ async def test_double_pinned():
         )
         
     print(msgs)
+
+
+@pytest.mark.asyncio
+@with_kp_overlay(
+    "http://kp1/query",
+    kp_data="""
+        CHEBI:6801(( category biolink:ChemicalSubstance ))
+        CHEBI:6802(( category biolink:ChemicalSubstance ))
+        MONDO:0005148(( category biolink:Disease ))
+        MONDO:0005149(( category biolink:Disease ))
+        CHEBI:6801-- predicate biolink:treats -->MONDO:0005148
+        CHEBI:6802-- predicate biolink:treats -->MONDO:0005148
+        """,
+    request_qty=3,
+    request_duration=datetime.timedelta(seconds=1)
+)
+async def test_max_batch_size():
+    """Test maximum batch size."""
+
+    # Register kp
+    kp_info = {
+        "url": "http://kp1/query",
+        "request_qty": 1,
+        "request_duration": 1,
+    }
+
+    qgs = [
+        {
+            "nodes": {
+                "n0": {"ids": ["CHEBI:6801"]},
+                "n1": {},
+            },
+            "edges": {
+                "n0n1": {
+                    "subject": "n0",
+                    "object": "n1",
+                    "predicates": ["biolink:treats"],
+                }
+            },
+        },
+        {
+            "nodes": {
+                "n0": {"ids": ["CHEBI:6802"]},
+                "n1": {},
+            },
+            "edges": {
+                "n0n1": {
+                    "subject": "n0",
+                    "object": "n1",
+                    "predicates": ["biolink:treats"],
+                }
+            },
+        }
+    ]
+
+    # Submit queries
+    start_time = time.time()
+    async with ThrottledServer(
+        "kp1",
+        **kp_info,
+        max_batch_size=1,
+    ) as server:
+        msgs = await asyncio.wait_for(
+            asyncio.gather(
+                *(
+                    server.query(
+                        {"message": {"query_graph": qg}}
+                    )
+                    for qg in qgs
+                )
+            ),
+            timeout=20,
+        )
+    elapsed = time.time() - start_time
+    # if we sent at most one subquery at a time and waited one second between
+    # subqueries, it took at least one second
+    assert elapsed > 1
