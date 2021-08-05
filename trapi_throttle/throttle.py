@@ -5,6 +5,7 @@ from asyncio.tasks import Task
 import copy
 import datetime
 from functools import wraps
+import itertools
 from json.decoder import JSONDecodeError
 import logging
 import traceback
@@ -55,7 +56,8 @@ class ThrottledServer():
         """Initialize."""
         self.id = id
         self.worker: Optional[Task] = None
-        self.request_queue = asyncio.Queue()
+        self.request_queue = asyncio.PriorityQueue()
+        self.counter = itertools.count()
         self.url = url
         self.request_qty = request_qty
         self.request_duration = datetime.timedelta(seconds=request_duration)
@@ -82,7 +84,7 @@ class ThrottledServer():
 
         while True:
             # Get everything in the stream or wait for something to show up
-            request_id, payload, response_queue = await self.request_queue.get()
+            _, (request_id, payload, response_queue) = await self.request_queue.get()
             request_value_mapping = {
                 request_id: payload
             }
@@ -93,7 +95,7 @@ class ThrottledServer():
                 if self.max_batch_size is not None and len(request_value_mapping) == self.max_batch_size:
                     break
                 try:
-                    request_id, payload, response_queue = self.request_queue.get_nowait()
+                    _, (request_id, payload, response_queue) = self.request_queue.get_nowait()
                 except QueueEmpty:
                     break
                 request_value_mapping[request_id] = payload
@@ -127,9 +129,12 @@ class ThrottledServer():
             for request_id in request_value_mapping:
                 if request_id not in batch_request_ids:
                     await self.request_queue.put((
-                        request_id,
-                        request_value_mapping[request_id],
-                        response_queues[request_id],
+                        next(self.counter),
+                        (
+                            request_id,
+                            request_value_mapping[request_id],
+                            response_queues[request_id],
+                        )
                     ))
 
             request_value_mapping = {
@@ -177,9 +182,12 @@ class ThrottledServer():
                     # re-queue requests
                     for request_id in request_value_mapping:
                         await self.request_queue.put((
-                            request_id,
-                            request_value_mapping[request_id],
-                            response_queues[request_id],
+                            next(self.counter),
+                            (
+                                request_id,
+                                request_value_mapping[request_id],
+                                response_queues[request_id],
+                            )
                         ))
                     # try again later
                     continue
@@ -261,7 +269,10 @@ class ThrottledServer():
         response_queue = asyncio.Queue()
 
         # Queue query for processing
-        await self.request_queue.put((request_id, query, response_queue))
+        await self.request_queue.put((
+            next(self.counter),
+            (request_id, query, response_queue),
+        ))
 
         # Wait for response
         output: Union[dict, Exception] = await asyncio.wait_for(
