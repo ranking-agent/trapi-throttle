@@ -84,7 +84,10 @@ class ThrottledServer():
 
         while True:
             # Get everything in the stream or wait for something to show up
-            _, (request_id, payload, response_queue) = await self.request_queue.get()
+            priority, (request_id, payload, response_queue) = await self.request_queue.get()
+            priorities = {
+                request_id: priority
+            }
             request_value_mapping = {
                 request_id: payload
             }
@@ -95,9 +98,10 @@ class ThrottledServer():
                 if self.max_batch_size is not None and len(request_value_mapping) == self.max_batch_size:
                     break
                 try:
-                    _, (request_id, payload, response_queue) = self.request_queue.get_nowait()
+                    priority, (request_id, payload, response_queue) = self.request_queue.get_nowait()
                 except QueueEmpty:
                     break
+                priorities[request_id] = priority
                 request_value_mapping[request_id] = payload
                 response_queues[request_id] = response_queue
 
@@ -129,7 +133,7 @@ class ThrottledServer():
             for request_id in request_value_mapping:
                 if request_id not in batch_request_ids:
                     await self.request_queue.put((
-                        next(self.counter),
+                        priorities[request_id],
                         (
                             request_id,
                             request_value_mapping[request_id],
@@ -182,7 +186,7 @@ class ThrottledServer():
                     # re-queue requests
                     for request_id in request_value_mapping:
                         await self.request_queue.put((
-                            next(self.counter),
+                            priorities[request_id],
                             (
                                 request_id,
                                 request_value_mapping[request_id],
@@ -259,6 +263,7 @@ class ThrottledServer():
     async def query(
             self,
             query: dict,
+            priority: float = 0,  # lowest goes first
             timeout: Optional[float] = 60.0,
     ) -> dict:
         """ Queue up a query for batching and return when completed """
@@ -270,7 +275,7 @@ class ThrottledServer():
 
         # Queue query for processing
         await self.request_queue.put((
-            next(self.counter),
+            (priority, next(self.counter)),
             (request_id, query, response_queue),
         ))
 
