@@ -212,10 +212,25 @@ async def test_no_qg():
             )
 
 
+QG = {
+    "nodes": {
+        "n0": {"ids": ["CHEBI:6801"]},
+        "n1": {"categories": ["biolink:Disease"]},
+    },
+    "edges": {
+        "n0n1": {
+            "subject": "n0",
+            "object": "n1",
+            "predicates": ["biolink:related_to"],
+        }
+    },
+}
+
+
 @pytest.mark.asyncio
 @with_response_overlay(
     "http://kp1/query",
-    response={"message": {"knowledge_graph": None, "query_graph": {"nodes": {}, "edges": {}}}},
+    response={"message": {"knowledge_graph": None, "query_graph": QG}},
     request_qty=5,
     request_duration=datetime.timedelta(seconds=1)
 )
@@ -227,36 +242,12 @@ async def test_no_kg():
         "request_duration": 0.75,
     }
 
-    qgs = [
-        {
-            "nodes": {
-                "n0": {"ids": ["CHEBI:6801"]},
-                "n1": {"categories": ["biolink:Disease"]},
-            },
-            "edges": {
-                "n0n1": {
-                    "subject": "n0",
-                    "object": "n1",
-                    "predicates": ["biolink:related_to"],
-                }
-            },
-        },
-    ]
-
-    with pytest.raises(BatchingError, match=r"kgraph not returned"):
-        async with ThrottledServer("kp1", **kp_info) as server:
-            # Submit queries
-            results = await asyncio.wait_for(
-                asyncio.gather(
-                    *(
-                        server.query(
-                            {"message": {"query_graph": qg}}
-                        )
-                        for qg in qgs
-                    )
-                ),
-                timeout=20,
-            )
+    async with ThrottledServer("kp1", **kp_info) as server:
+        # Submit query
+        response = await server.query(
+            {"message": {"query_graph": QG}}
+        )
+    assert response["message"]["results"] == []
 
 
 QG = {
