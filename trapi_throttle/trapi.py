@@ -83,10 +83,14 @@ def filter_by_curie_mapping(
     contain the bindings specified in the curie_mapping
     """
     message = copy.deepcopy(message)
+    message["knowledge_graph"] = message.get("knowledge_graph") or {
+        "nodes": {},
+        "edges": {},
+    }
+    message["results"] = message.get("results") or []
+
     if message["query_graph"] is None:
         raise BatchingError(f"qgraph not returned from {kp_id}")
-    if message["knowledge_graph"] is None:
-        raise BatchingError(f"kgraph not returned from {kp_id}")
 
     # Update query graph IDs
     for qg_id, curie_list in curie_mapping.items():
