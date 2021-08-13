@@ -9,7 +9,7 @@ import itertools
 from json.decoder import JSONDecodeError
 import logging
 import traceback
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
 import httpx
 import pydantic
@@ -39,6 +39,11 @@ def log_errors(fcn):
     return wrapper
 
 
+async def anull(arg):
+    """Do nothing, asynchronously."""
+    return arg
+
+
 class ThrottledServer():
     """Throttled server."""
 
@@ -51,6 +56,8 @@ class ThrottledServer():
         *args, 
         max_batch_size: Optional[int] = None,
         timeout: float = 60.0,
+        preproc: Callable = anull,
+        postproc: Callable = anull,
         **kwargs,
     ):
         """Initialize."""
@@ -63,6 +70,8 @@ class ThrottledServer():
         self.request_duration = datetime.timedelta(seconds=request_duration)
         self.timeout = timeout
         self.max_batch_size = max_batch_size
+        self.preproc = preproc
+        self.postproc = postproc
 
     @log_errors
     async def process_batch(
@@ -173,6 +182,7 @@ class ThrottledServer():
             response_values = dict()
             try:
                 # Make request
+                merged_request_value = await self.preproc(merged_request_value)
                 async with httpx.AsyncClient() as client:
                     response = await client.post(
                         self.url,
@@ -200,6 +210,7 @@ class ThrottledServer():
 
                 # Parse with reasoner_pydantic to validate
                 response = ReasonerResponse.parse_obj(response.json()).dict()
+                response = await self.postproc(response)
                 message = response["message"]
 
                 # Split using the request_curie_mapping
