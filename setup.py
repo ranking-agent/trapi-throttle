@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name="trapi-throttle",
-    version="1.1.0",
+    version="1.2.0",
     author="Patrick Wang",
     author_email="patrick@covar.com",
     url="https://github.com/ranking-agent/trapi-throttle",
