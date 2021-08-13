@@ -205,8 +205,14 @@ class ThrottledServer():
                 # Split using the request_curie_mapping
                 for request_id, curie_mapping in request_curie_mapping.items():
                     try:
-                        message_filtered = filter_by_curie_mapping(message, curie_mapping, kp_id=self.id)
-                        response_values[request_id] = {"message": message_filtered}
+                        kgraph, results = filter_by_curie_mapping(message, curie_mapping, kp_id=self.id)
+                        response_values[request_id] = {
+                            "message": {
+                                "query_graph": request_value_mapping[request_id]["message"]["query_graph"],
+                                "knowledge_graph": kgraph,
+                                "results": results,
+                            }
+                        }
                     except BatchingError as err:
                         # the response is probably malformed
                         response_values[request_id] = err
