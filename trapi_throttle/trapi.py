@@ -82,31 +82,27 @@ def filter_by_curie_mapping(
     Filter a message to ensure that all results
     contain the bindings specified in the curie_mapping
     """
-    message = copy.deepcopy(message)
-    message["knowledge_graph"] = message.get("knowledge_graph") or {
-        "nodes": {},
-        "edges": {},
-    }
-    message["results"] = message.get("results") or []
-
-    if message["query_graph"] is None:
-        raise BatchingError(f"qgraph not returned from {kp_id}")
-
-    # Update query graph IDs
-    for qg_id, curie_list in curie_mapping.items():
-        try:
-            message["query_graph"]["nodes"][qg_id]["ids"] = curie_list
-        except KeyError:
-            raise BatchingError(f"qgraph from {kp_id} appears to be modified or malformed")
-
     # Only keep results where there is a node binding
     # that connects to our given kgraph_node_id
-    message["results"] = [
-        result for result in (message["results"] or [])
+    results = [
+        result for result in (message.get("results") or [])
         if result_contains_node_bindings(result, curie_mapping)
     ]
 
     # Remove extra knowledge graph nodes
-    remove_unbound_from_kg(message)
+    kgraph = {
+        "nodes": {
+            binding["id"]: message["knowledge_graph"]["nodes"][binding["id"]]
+            for result in results
+            for _, bindings in result["node_bindings"].items()
+            for binding in bindings
+        },
+        "edges": {
+            binding["id"]: message["knowledge_graph"]["edges"][binding["id"]]
+            for result in results
+            for _, bindings in result["edge_bindings"].items()
+            for binding in bindings
+        },
+    }
 
-    return message
+    return kgraph, results
