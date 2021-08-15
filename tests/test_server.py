@@ -430,12 +430,10 @@ async def test_kp_500(client):
     # Check that all of the requests are served and contain the error message
     for r in responses:
         # Check that we keep the status code
-        assert r.status_code == 500
-        # Check that this is a LogEntry
-        reasoner_pydantic.LogEntry.parse_raw(r.text)
-        # Check that we kept the message from the KP
+        assert r.status_code == 200
+        # Check that the results are empty
         r = r.json()
-        assert r["response"]["data"] == "Internal server error"
+        assert not r["message"].get("results", [])
 
     response = await client.get("/unregister/kp1")
     assert response.status_code == 200
@@ -475,12 +473,10 @@ async def test_kp_unreachable(client):
     # Check that all of the requests are served and contain the error message
     for r in responses:
         # Check that we keep the status code
-        assert r.status_code == 502
-        # Check that this is a LogEntry
-        reasoner_pydantic.LogEntry.parse_raw(r.text)
+        assert r.status_code == 200
+        # Check that the results are empty
         r = r.json()
-        # Check that we add a message
-        assert r["message"] == "Request Error contacting KP"
+        assert not r["message"].get("results", [])
 
     response = await client.get("/unregister/kp1")
     assert response.status_code == 200
