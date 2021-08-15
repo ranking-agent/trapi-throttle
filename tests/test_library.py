@@ -267,16 +267,17 @@ async def test_batched_timeout():
         "request_duration": 0.75,
     }
 
-    with pytest.raises(asyncio.exceptions.TimeoutError):
-        async with ThrottledServer(
-            "kp1",
-            **kp_info,
-            timeout=1.0,
-        ) as server:
-            await server.query(
-                {"message": {"query_graph": QG}},
-                timeout=None,
-            )
+    async with ThrottledServer(
+        "kp1",
+        **kp_info,
+        timeout=1.0,
+    ) as server:
+        response = await server.query(
+            {"message": {"query_graph": QG}},
+            timeout=None,
+        )
+        # Check that the results are empty
+        assert not response["message"].get("results", [])
 
 
 @pytest.mark.asyncio
