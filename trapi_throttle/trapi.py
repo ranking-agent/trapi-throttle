@@ -89,7 +89,7 @@ def filter_by_curie_mapping(
         if result_contains_node_bindings(result, curie_mapping)
     ]
 
-    # Remove extra knowledge graph nodes
+    # Construct result-specific knowledge graph
     kgraph = {
         "nodes": {
             binding["id"]: message["knowledge_graph"]["nodes"][binding["id"]]
