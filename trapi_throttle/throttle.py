@@ -58,6 +58,7 @@ class ThrottledServer():
         timeout: float = 60.0,
         preproc: Callable = anull,
         postproc: Callable = anull,
+        logger: logging.Logger = None,
         **kwargs,
     ):
         """Initialize."""
@@ -72,6 +73,9 @@ class ThrottledServer():
         self.max_batch_size = max_batch_size
         self.preproc = preproc
         self.postproc = postproc
+        if logger is None:
+            logger = logging.getLogger(__name__)
+        self.logger = logger
 
     @log_errors
     async def process_batch(
