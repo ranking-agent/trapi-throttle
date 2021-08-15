@@ -17,7 +17,7 @@ from reasoner_pydantic import Response as ReasonerResponse
 import uuid
 
 from .trapi import BatchingError, get_curies, remove_curies, filter_by_curie_mapping
-from .utils import get_keys_with_value
+from .utils import get_keys_with_value, log_request, log_response
 
 LOGGER = logging.getLogger(__name__)
 
@@ -239,7 +239,54 @@ class ThrottledServer():
                 pydantic.ValidationError,
             ) as e:
                 for request_id, curie_mapping in request_curie_mapping.items():
-                    response_values[request_id] = e
+                    response_values[request_id] = {
+                        "message": request_value_mapping[request_id]["message"],
+                    }
+                if isinstance(e, asyncio.TimeoutError):
+                    self.logger.warning({
+                        "message": f"{self.id} took >60 seconds to respond",
+                        "error": str(e),
+                        "request": merged_request_value,
+                    })
+                elif isinstance(e, httpx.ReadTimeout):
+                    self.logger.warning({
+                        "message": f"{self.id} took >60 seconds to respond",
+                        "error": str(e),
+                        "request": log_request(e.request),
+                    })
+                elif isinstance(e, httpx.RequestError):
+                    # Log error
+                    self.logger.warning({
+                        "message": f"Request Error contacting {self.id}",
+                        "error": str(e),
+                        "request": log_request(e.request),
+                    })
+                elif isinstance(e, httpx.HTTPStatusError):
+                    # Log error with response
+                    self.logger.warning({
+                        "message": f"Response Error contacting {self.id}",
+                        "error": str(e),
+                        "request": log_request(e.request),
+                        "response": log_response(e.response),
+                    })
+                elif isinstance(e, JSONDecodeError):
+                    # Log error with response
+                    self.logger.warning({
+                        "message": f"Received bad JSON data from {self.id}",
+                        "request": e.request,
+                        "response": e.response.text,
+                        "error": str(e),
+                    })
+                elif isinstance(e, pydantic.ValidationError):
+                    self.logger.warning({
+                        "message": f"Received non-TRAPI compliant response from {self.id}",
+                        "error": str(e),
+                    })
+                else:
+                    self.logger.warning({
+                        "message": f"Something went wrong while querying {self.id}",
+                        "error": str(e),
+                    })
 
             for request_id, response_value in response_values.items():
                 # Write finished value to DB
