@@ -182,6 +182,9 @@ class ThrottledServer():
                     if "ids" not in node:
                         node["ids"] = []
                     node["ids"].extend(node_curies)
+            for qnode in merged_request_value["message"]["query_graph"]["nodes"].values():
+                if qnode.get("ids"):
+                    qnode["ids"] = list(set(qnode["ids"]))
 
             response_values = dict()
             try:
