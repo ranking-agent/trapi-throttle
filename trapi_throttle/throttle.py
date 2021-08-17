@@ -39,7 +39,7 @@ def log_errors(fcn):
     return wrapper
 
 
-async def anull(arg):
+async def anull(arg, *args, **kwargs):
     """Do nothing, asynchronously."""
     return arg
 
@@ -189,7 +189,16 @@ class ThrottledServer():
             response_values = dict()
             try:
                 # Make request
-                merged_request_value = await self.preproc(merged_request_value)
+                self.logger.info("[{id}] Sending request made of {subrequests} subrequests ({curies} curies)".format(
+                    id = self.id,
+                    subrequests=len(request_curie_mapping),
+                    curies=" x ".join(
+                        str(len(qnode.get("ids", []) or []))
+                        for qnode in merged_request_value["message"]["query_graph"]["nodes"].values()
+                    ),
+                ))
+                self.logger.context = self.id
+                merged_request_value = await self.preproc(merged_request_value, self.logger)
                 async with httpx.AsyncClient() as client:
                     response = await client.post(
                         self.url,
@@ -219,6 +228,8 @@ class ThrottledServer():
                 response = ReasonerResponse.parse_obj(response.json()).dict()
                 response = await self.postproc(response)
                 message = response["message"]
+                results = message.get("results") or []
+                self.logger.info(f"[{self.id}] Received response with {len(results)} results")
 
                 # Split using the request_curie_mapping
                 for request_id, curie_mapping in request_curie_mapping.items():
