@@ -1,3 +1,5 @@
+# ARCHIVED: This repo is outdated and has been incorporated in the Strider repo.
+
 # TRAPI Throttle
 
 Proxy service that enforces rate limits on TRAPI endpoints using batching.
